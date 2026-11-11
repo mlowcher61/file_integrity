@@ -1,4 +1,7 @@
 ---
+# Captured AIDE output must stay byte-for-byte identical.
+exclude: ^tests/fixtures/.*\.txt$
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
