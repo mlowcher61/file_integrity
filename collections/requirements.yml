@@ -1,0 +1,14 @@
+---
+# Collections needed by the playbooks in this project.
+# AAP installs these automatically at project sync using the Galaxy /
+# Automation Hub credentials configured on your organization.
+collections:
+  # Certified. Provides the `aide` system role.
+  # NOTE: already included in the ee-supported-rhel9 execution environment;
+  # listed here so local runs and project syncs resolve the same content.
+  - name: redhat.rhel_system_roles
+  # Certified.
+  - name: ansible.posix
+  # Community. Listed per the project spec for parity with common
+  # tooling; the playbooks in this repo do not currently call any of its modules.
+  - name: community.general

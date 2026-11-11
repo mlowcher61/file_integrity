@@ -1,0 +1,5 @@
+# file_integrity_defaults is a defaults-only role that intentionally holds
+# PROJECT-WIDE variables (aide_*), several of which are consumed directly by
+# redhat.rhel_system_roles.aide (e.g. aide_cron_interval). A role prefix would
+# break that contract. See playbooks/roles/file_integrity_defaults/README.md.
+playbooks/roles/file_integrity_defaults/defaults/main.yml var-naming[no-role-prefix]

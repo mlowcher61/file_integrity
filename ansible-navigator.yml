@@ -1,0 +1,21 @@
+---
+# Local runs with the same execution environment AAP uses:
+#   podman login registry.redhat.io
+#   export AIDE_BASELINE_GIT_TOKEN=...
+#   ansible-navigator run playbooks/aide_check.yml -i inventory/example.yml
+ansible-navigator:
+  execution-environment:
+    enabled: true
+    container-engine: podman
+    image: registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9:latest
+    pull:
+      policy: missing
+    environment-variables:
+      pass:
+        - AIDE_BASELINE_GIT_TOKEN
+  mode: stdout
+  playbook-artifact:
+    enable: false
+  logging:
+    level: warning
+    file: ansible-navigator.log

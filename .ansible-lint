@@ -1,0 +1,23 @@
+---
+profile: production
+
+# Do not try to install collections/requirements.yml during linting:
+# redhat.rhel_system_roles comes from Red Hat Automation Hub (requires a token).
+offline: true
+
+exclude_paths:
+  - collections/ansible_collections/
+  - aap/collections/
+  - .github/
+  - .ansible/
+  - tests/fixtures/
+
+# The spec file is not Ansible content.
+kinds:
+  - playbook: "playbooks/*.yml"
+  - tasks: "playbooks/tasks/**/*.yml"
+  - playbook: "tests/*.yml"
+  - tasks: "tests/tasks/*.yml"
+  - playbook: "aap/configure_aap.yml"
+  - vars: "aap/vars/*.yml"
+  - vars: "inventory/group_vars/**/*.yml"

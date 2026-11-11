@@ -1,0 +1,23 @@
+# Collections installed locally by `ansible-galaxy collection install -r ...`
+collections/ansible_collections/
+aap/collections/
+
+# ansible-navigator / runner artifacts
+*.retry
+ansible-navigator.log
+artifacts/
+.ansible/
+
+# Python / editors
+__pycache__/
+*.pyc
+.venv/
+venv/
+.vscode/
+.idea/
+.DS_Store
+
+# Never commit secrets or fetched AIDE databases
+*.db.gz
+*.db.new.gz
+aap/vars/secrets.yml

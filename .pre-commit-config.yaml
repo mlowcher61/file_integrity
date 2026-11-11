@@ -1,0 +1,30 @@
+---
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]   # allow !unsafe tags used by AAP credential injectors
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        args: [--strict]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v25.9.2
+    hooks:
+      - id: ansible-lint
+        args: [--profile, production]
+        additional_dependencies:
+          - ansible-core>=2.16
