@@ -1,0 +1,90 @@
+---
+# AIDE - Deploy
+#
+# Installs AIDE, renders /etc/aide.conf, initializes the database, fetches it
+# to the controller and publishes it to the off-host baseline store.
+#
+# Idempotent: hosts that already have a baseline in the store are NOT
+# re-initialized (their trusted baseline is restored onto the host instead)
+# unless aide_force_init=true.
+
+- name: AIDE | Deploy file integrity monitoring and publish initial baselines
+  hosts: "{{ aide_target_hosts | default('aide') }}"
+  become: true
+  gather_facts: true
+  gather_subset:
+    - min
+  roles:
+    - role: file_integrity_defaults
+
+  tasks:
+    - name: Deploy | Run pre-flight checks
+      ansible.builtin.include_tasks: tasks/preflight.yml
+
+    - name: Deploy | Create a controller scratch directory
+      ansible.builtin.include_tasks: tasks/controller_workdir.yml
+
+    - name: Deploy | Look up existing baselines
+      ansible.builtin.include_tasks: tasks/baseline_pull.yml
+      vars:
+        aide_baseline_required: false
+
+    - name: Deploy | Decide which hosts need a new baseline
+      ansible.builtin.set_fact:
+        __aide_fim_needs_init: "{{ (not aide_baseline_exists | bool) or (aide_force_init | bool) }}"
+
+    - name: Deploy | Show the plan for this host
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Initializing a NEW baseline'
+             ~ (' (aide_force_init=true, replacing the existing baseline)' if aide_baseline_exists | bool else '')
+             if __aide_fim_needs_init | bool
+             else 'Baseline already exists in the store; skipping initialization (set aide_force_init=true to replace it)' }}
+
+    - name: Deploy | Install, configure and (if needed) initialize AIDE with the system role
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.aide
+      vars:
+        aide_config_template: "{{ aide_config_template_src }}"
+        aide_db_fetch_dir: "{{ __aide_fim_fetch_dir }}"
+        aide_init: "{{ __aide_fim_needs_init | bool }}"
+        aide_fetch_db: "{{ __aide_fim_needs_init | bool }}"
+        aide_check: false
+        aide_update: false
+        aide_cron_check: "{{ aide_schedule_mode == 'cron' }}"
+
+    - name: Deploy | Install the new database as the on-host reference database
+      ansible.builtin.copy:
+        src: "{{ __aide_fim_fetched_db }}"
+        dest: "{{ aide_db_dir }}/aide.db.gz"
+        owner: root
+        group: root
+        mode: "0440"
+        force: true
+      when: __aide_fim_needs_init | bool
+
+    - name: Deploy | Restore the existing trusted baseline onto the host
+      ansible.builtin.include_tasks: tasks/baseline_restore.yml
+      when: not __aide_fim_needs_init | bool
+
+    - name: Deploy | Publish new baselines to the baseline store
+      ansible.builtin.include_tasks: tasks/baseline_push.yml
+      vars:
+        aide_baseline_action: "{{ 'deploy-forced' if aide_force_init | bool else 'deploy' }}"
+        aide_baseline_push_hosts: >-
+          {{ ansible_play_hosts
+             | zip(ansible_play_hosts | map('extract', hostvars, '__aide_fim_needs_init'))
+             | selectattr(1) | map(attribute=0) | list }}
+
+    - name: Deploy | Summary
+      ansible.builtin.debug:
+        msg: >-
+          {{ item }}:
+          {{ 'did not complete (see errors above)' if item not in ansible_play_hosts
+             else ('new baseline published' if hostvars[item].__aide_fim_needs_init | bool
+                   else 'existing baseline kept and restored') }}
+      loop: "{{ ansible_play_hosts_all }}"
+      run_once: true
+
+    - name: Deploy | Remove the controller scratch directory
+      ansible.builtin.include_tasks: tasks/controller_workdir_cleanup.yml

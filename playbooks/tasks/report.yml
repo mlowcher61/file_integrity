@@ -1,0 +1,95 @@
+---
+# Parse the output of `aide --check` (or `aide --update`) into a structured
+# per-host report, publish it with set_stats, and print a readable summary.
+#
+# Inputs:
+#   aide_report_result     - registered result of the aide command (stdout, rc)
+#   aide_report_stats_key  - set_stats key (default: aide_check_results)
+# Output (per host):
+#   aide_report - dict with status, counts and the (truncated) path lists
+#
+# AIDE exit codes: 0 = no differences; 1/2/4 (bitwise OR) = added/removed/
+# changed entries; 14 and above = error.
+
+- name: Report | Parse the AIDE summary
+  ansible.builtin.set_fact:
+    aide_report:
+      host: "{{ inventory_hostname }}"
+      status: "{{ __status | trim }}"
+      rc: "{{ __rc | int }}"
+      aide_version: "{{ aide_version | default('unknown') }}"
+      total_entries: "{{ __count_total | int }}"
+      added: "{{ __count_added | int }}"
+      removed: "{{ __count_removed | int }}"
+      changed: "{{ __count_changed | int }}"
+      added_paths: "{{ __added_paths[: __max | int] }}"
+      removed_paths: "{{ __removed_paths[: ([__max | int - __added_paths | length, 0] | max)] }}"
+      changed_paths: "{{ __changed_paths[: ([__max | int - __added_paths | length - __removed_paths | length, 0] | max)] }}"
+      paths_total: "{{ __paths_total | int }}"
+      paths_truncated: "{{ __paths_total | int > __max | int }}"
+      error: "{{ (aide_report_result.stderr | default('') | trim)[:2000] if __status | trim == 'error' else '' }}"
+      baseline_sha256: "{{ aide_baseline_metadata.sha256 | default('') }}"
+      baseline_timestamp: "{{ aide_baseline_metadata.timestamp | default('') }}"
+      config_drift_corrected: "{{ __aide_fim_config_drift.changed | default(false) | bool }}"
+      reported_at: "{{ now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ') }}"
+  vars:
+    __max: "{{ aide_report_max_paths | int }}"
+    __out: "{{ aide_report_result.stdout | default('') }}"
+    __rc: "{{ aide_report_result.rc | default(-1) }}"
+    __status: >-
+      {{ 'clean' if __rc | int == 0 else ('changes' if __rc | int in range(1, 8) else 'error') }}
+    __count_total: "{{ __out | regex_findall('[Nn]umber of entries:\\s*(\\d+)') | first | default('0') }}"
+    __count_added: "{{ __out | regex_findall('Added entries:[ \\t]*(\\d+)') | first | default('0') }}"
+    __count_removed: "{{ __out | regex_findall('Removed entries:[ \\t]*(\\d+)') | first | default('0') }}"
+    __count_changed: "{{ __out | regex_findall('Changed entries:[ \\t]*(\\d+)') | first | default('0') }}"
+    # Each detail section in the AIDE report looks like:
+    #   ---------------------------------------------------
+    #   Added entries:
+    #   ---------------------------------------------------
+    #
+    #   f++++++++++++++++: /etc/example
+    __section_re: '(?s)-{5,}\nSECTION entries:\n-{5,}\n(.*?)(?=\n-{5,}\n|\Z)'
+    __line_re: '(?m)^\S[^:\n]*:\s+(/.*?)\s*$'
+    __added_paths: >-
+      {{ (__out | regex_findall(__section_re | replace('SECTION', 'Added')) | first | default(''))
+         | regex_findall(__line_re) }}
+    __removed_paths: >-
+      {{ (__out | regex_findall(__section_re | replace('SECTION', 'Removed')) | first | default(''))
+         | regex_findall(__line_re) }}
+    __changed_paths: >-
+      {{ (__out | regex_findall(__section_re | replace('SECTION', 'Changed')) | first | default(''))
+         | regex_findall(__line_re) }}
+    __paths_total: "{{ __added_paths | length + __removed_paths | length + __changed_paths | length }}"
+
+- name: Report | Publish results for workflows and Event-Driven Ansible
+  ansible.builtin.set_stats:
+    data: "{{ {aide_report_stats_key | default('aide_check_results'): {inventory_hostname: aide_report}} }}"
+    aggregate: true
+
+- name: Report | Publish the list of hosts with changes
+  ansible.builtin.set_stats:
+    data:
+      aide_hosts_with_changes: ["{{ inventory_hostname }}"]
+    aggregate: true
+  when: aide_report.status == 'changes'
+
+- name: Report | Show the result for this host
+  ansible.builtin.debug:
+    msg: "{{ __lines }}"
+  vars:
+    __headline:
+      clean: "CLEAN - no differences from the baseline"
+      changes: "CHANGES DETECTED - differences from the baseline"
+      error: "ERROR - AIDE did not complete (rc {{ aide_report.rc }})"
+    __lines: >-
+      {{ ['Host:     ' ~ inventory_hostname,
+          'Result:   ' ~ __headline[aide_report.status],
+          'Counts:   added ' ~ aide_report.added ~ ', removed ' ~ aide_report.removed
+            ~ ', changed ' ~ aide_report.changed ~ ' (entries scanned: ' ~ aide_report.total_entries ~ ')',
+          'Baseline: ' ~ (aide_report.baseline_timestamp or 'n/a') ~ ' sha256 ' ~ (aide_report.baseline_sha256 or 'n/a')]
+         + (['Config:   /etc/aide.conf had drifted from the managed template and was corrected'] if aide_report.config_drift_corrected else [])
+         + (['Error:    ' ~ aide_report.error] if aide_report.error else [])
+         + (aide_report.added_paths | map('regex_replace', '^', '  added    ') | list)
+         + (aide_report.removed_paths | map('regex_replace', '^', '  removed  ') | list)
+         + (aide_report.changed_paths | map('regex_replace', '^', '  changed  ') | list)
+         + (['  ... list truncated: showing ' ~ aide_report_max_paths ~ ' of ' ~ aide_report.paths_total ~ ' paths'] if aide_report.paths_truncated else []) }}

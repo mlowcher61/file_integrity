@@ -1,0 +1,18 @@
+---
+# Sample static inventory for local testing with ansible-navigator.
+# In AAP, use your own inventory; the playbooks target the `aide` group by
+# default (override with the aide_target_hosts extra var).
+all:
+  children:
+    aide:
+      children:
+        webservers:
+          hosts:
+            web01.example.com:
+              ansible_host: 192.0.2.10
+        dbservers:
+          hosts:
+            db01.example.com:
+              ansible_host: 192.0.2.20
+  vars:
+    ansible_user: ansible

@@ -1,0 +1,99 @@
+---
+# AIDE - Check
+#
+# Restores the verified off-host baseline onto each host, runs `aide --check`
+# and reports the result. This playbook NEVER modifies the baseline store.
+#
+# With aide_fail_on_change=true (default) any detected change fails that host,
+# but only after every host has been checked and reported.
+
+- name: AIDE | Integrity check against the off-host baseline
+  hosts: "{{ aide_target_hosts | default('aide') }}"
+  become: true
+  gather_facts: true
+  gather_subset:
+    - min
+  roles:
+    - role: file_integrity_defaults
+
+  tasks:
+    - name: Check | Run pre-flight checks
+      ansible.builtin.include_tasks: tasks/preflight.yml
+
+    - name: Check | Detect the installed AIDE version
+      ansible.builtin.include_tasks: tasks/aide_version.yml
+
+    - name: Check | Detect drift of /etc/aide.conf from the managed template
+      ansible.builtin.template:
+        src: "{{ aide_config_template_src }}"
+        dest: /etc/aide.conf
+        mode: "0400"
+      check_mode: true
+      diff: false
+      register: __aide_fim_config_drift
+
+    - name: Check | Enforce the managed AIDE configuration and schedule mode
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.aide
+      vars:
+        aide_config_template: "{{ aide_config_template_src }}"
+        aide_init: false
+        aide_fetch_db: false
+        aide_check: false
+        aide_update: false
+        aide_cron_check: "{{ aide_schedule_mode == 'cron' }}"
+
+    - name: Check | Create a controller scratch directory
+      ansible.builtin.include_tasks: tasks/controller_workdir.yml
+
+    - name: Check | Pull and verify the off-host baseline
+      ansible.builtin.include_tasks: tasks/baseline_pull.yml
+      vars:
+        aide_baseline_required: true
+
+    - name: Check | Restore the verified baseline onto the host
+      ansible.builtin.include_tasks: tasks/baseline_restore.yml
+
+    - name: Check | Run aide --check
+      ansible.builtin.command:
+        cmd: aide --check
+      register: __aide_fim_check
+      async: "{{ aide_command_timeout | int }}"
+      poll: 15
+      changed_when: false
+      failed_when: false
+
+    - name: Check | Report the result
+      ansible.builtin.include_tasks: tasks/report.yml
+      vars:
+        aide_report_result: "{{ __aide_fim_check }}"
+        aide_report_stats_key: aide_check_results
+
+    - name: Check | Summary for all hosts
+      ansible.builtin.debug:
+        msg: >-
+          {{ item }}:
+          {{ (hostvars[item].aide_report.status | upper ~ ' (added ' ~ hostvars[item].aide_report.added
+              ~ ', removed ' ~ hostvars[item].aide_report.removed ~ ', changed ' ~ hostvars[item].aide_report.changed ~ ')')
+             if hostvars[item].aide_report is defined else 'NOT CHECKED (failed earlier, see errors above)' }}
+      loop: "{{ ansible_play_hosts_all }}"
+      run_once: true
+
+    - name: Check | Remove the controller scratch directory
+      ansible.builtin.include_tasks: tasks/controller_workdir_cleanup.yml
+
+    - name: Check | Fail hosts where AIDE did not complete
+      ansible.builtin.fail:
+        msg: "AIDE failed on {{ inventory_hostname }} (rc {{ aide_report.rc }}): {{ aide_report.error }}"
+      when: aide_report.status == 'error'
+
+    - name: Check | Fail hosts with integrity changes
+      ansible.builtin.fail:
+        msg: >-
+          AIDE detected {{ aide_report.added }} added, {{ aide_report.removed }}
+          removed and {{ aide_report.changed }} changed entries on
+          {{ inventory_hostname }}. Triage them using docs/OPERATIONS.md. If they
+          are approved, run "AIDE - Change Rebaseline".
+      when:
+        - aide_report.status == 'changes'
+        - aide_fail_on_change | bool

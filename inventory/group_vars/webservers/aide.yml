@@ -1,0 +1,13 @@
+---
+# Example per-group override: extra paths for web servers.
+# These are MERGED with the global aide_watch_paths (duplicates by path are
+# removed; an entry here wins over a global entry with the same path).
+aide_watch_paths_extra:
+  # CGI programs are executable code: watch content and metadata.
+  - { path: /var/www/cgi-bin, rule: CONTENTEX }
+  # Site content changes with releases: watch ownership and permissions only.
+  - { path: /var/www/html, rule: PERMS }
+
+aide_exclude_paths_extra:
+  # Apache's runtime cache is rebuilt constantly.
+  - /var/cache/httpd

@@ -1,0 +1,118 @@
+---
+# AIDE - Rebaseline
+#
+# Accepts the current state of the host(s) as the new known-good baseline
+# after an APPROVED change. Requires aide_change_ref (e.g. a ServiceNow CHG
+# number), which is recorded in metadata.yml and in the commit message.
+# Use --limit (or the job template's Limit prompt) for single-host rebaselines.
+
+- name: AIDE | Approved re-baseline after a change
+  hosts: "{{ aide_target_hosts | default('aide') }}"
+  become: true
+  gather_facts: true
+  gather_subset:
+    - min
+  roles:
+    - role: file_integrity_defaults
+
+  tasks:
+    - name: Rebaseline | Require an approved change reference
+      ansible.builtin.assert:
+        that:
+          - aide_change_ref is defined
+          - aide_change_ref is string
+          - aide_change_ref | trim | length > 0
+          - aide_change_ref is match(aide_change_ref_pattern)
+        fail_msg: >-
+          Refusing to re-baseline without an approved change reference. Set
+          aide_change_ref (for example CHG0012345); it must match
+          '{{ aide_change_ref_pattern }}'.
+        quiet: true
+
+    - name: Rebaseline | Run pre-flight checks
+      ansible.builtin.include_tasks: tasks/preflight.yml
+
+    - name: Rebaseline | Detect the installed AIDE version
+      ansible.builtin.include_tasks: tasks/aide_version.yml
+
+    - name: Rebaseline | Enforce the managed AIDE configuration and schedule mode
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.aide
+      vars:
+        aide_config_template: "{{ aide_config_template_src }}"
+        aide_init: false
+        aide_fetch_db: false
+        aide_check: false
+        aide_update: false
+        aide_cron_check: "{{ aide_schedule_mode == 'cron' }}"
+
+    - name: Rebaseline | Create a controller scratch directory
+      ansible.builtin.include_tasks: tasks/controller_workdir.yml
+
+    - name: Rebaseline | Pull and verify the current off-host baseline
+      ansible.builtin.include_tasks: tasks/baseline_pull.yml
+      vars:
+        aide_baseline_required: true
+
+    - name: Rebaseline | Restore the verified baseline onto the host
+      ansible.builtin.include_tasks: tasks/baseline_restore.yml
+
+    - name: Rebaseline | Run aide --update against the trusted baseline
+      ansible.builtin.command:
+        cmd: aide --update
+      register: __aide_fim_update
+      async: "{{ aide_command_timeout | int }}"
+      poll: 15
+      changed_when: true
+      failed_when: false
+
+    - name: Rebaseline | Report the changes being accepted
+      ansible.builtin.include_tasks: tasks/report.yml
+      vars:
+        aide_report_result: "{{ __aide_fim_update }}"
+        aide_report_stats_key: aide_rebaseline_results
+
+    - name: Rebaseline | Fail hosts where aide --update did not complete
+      ansible.builtin.fail:
+        msg: "aide --update failed on {{ inventory_hostname }} (rc {{ aide_report.rc }}): {{ aide_report.error }}"
+      when: aide_report.status == 'error'
+
+    - name: Rebaseline | Fetch the updated database to the controller
+      ansible.builtin.fetch:
+        src: "{{ aide_db_dir }}/aide.db.new.gz"
+        dest: "{{ __aide_fim_fetch_dir }}"
+        fail_on_missing: true
+
+    - name: Rebaseline | Install the updated database as the on-host reference database
+      ansible.builtin.copy:
+        src: "{{ aide_db_dir }}/aide.db.new.gz"
+        dest: "{{ aide_db_dir }}/aide.db.gz"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0440"
+        force: true
+
+    - name: Rebaseline | Remove the temporary database from the host
+      ansible.builtin.file:
+        path: "{{ aide_db_dir }}/aide.db.new.gz"
+        state: absent
+
+    - name: Rebaseline | Publish the new baselines to the baseline store
+      ansible.builtin.include_tasks: tasks/baseline_push.yml
+      vars:
+        aide_baseline_action: rebaseline
+        aide_baseline_push_hosts: "{{ ansible_play_hosts }}"
+
+    - name: Rebaseline | Summary
+      ansible.builtin.debug:
+        msg: >-
+          {{ item }}:
+          {{ ('re-baselined under ' ~ aide_change_ref ~ ' (accepted: added ' ~ hostvars[item].aide_report.added
+              ~ ', removed ' ~ hostvars[item].aide_report.removed ~ ', changed ' ~ hostvars[item].aide_report.changed ~ ')')
+             if item in ansible_play_hosts else 'NOT re-baselined (failed, see errors above)' }}
+      loop: "{{ ansible_play_hosts_all }}"
+      run_once: true
+
+    - name: Rebaseline | Remove the controller scratch directory
+      ansible.builtin.include_tasks: tasks/controller_workdir_cleanup.yml

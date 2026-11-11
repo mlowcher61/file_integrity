@@ -1,0 +1,14 @@
+---
+# Create a scratch directory on the controller / execution environment.
+# AAP jobs are ephemeral, so nothing here survives the job; baselines are
+# persisted by the baseline backend (see docs/DESIGN.md).
+
+- name: Controller workdir | Create scratch directory
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: file_integrity.
+  register: __aide_fim_workdir
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  run_once: true

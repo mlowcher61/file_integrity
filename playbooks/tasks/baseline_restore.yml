@@ -1,0 +1,31 @@
+---
+# Copy the verified off-host baseline onto the host as AIDE's reference
+# database, then confirm the copy on the host has the expected sha256.
+# Requires baseline_pull.yml to have run first.
+
+- name: Baseline restore | Install the verified baseline as the AIDE reference database
+  ansible.builtin.copy:
+    src: "{{ aide_baseline_db_path }}"
+    dest: "{{ aide_db_dir }}/aide.db.gz"
+    owner: root
+    group: root
+    mode: "0440"
+    force: true
+
+- name: Baseline restore | Hash the reference database on the host
+  ansible.builtin.stat:
+    path: "{{ aide_db_dir }}/aide.db.gz"
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: __aide_fim_restored_db_stat
+
+- name: Baseline restore | Verify the restored database matches the baseline
+  ansible.builtin.assert:
+    that:
+      - __aide_fim_restored_db_stat.stat.checksum == aide_baseline_metadata.sha256
+    fail_msg: >-
+      The reference database on {{ inventory_hostname }} does not match the
+      off-host baseline after restore (host:
+      {{ __aide_fim_restored_db_stat.stat.checksum }}, baseline:
+      {{ aide_baseline_metadata.sha256 }}). Something on the host altered it.
+    quiet: true

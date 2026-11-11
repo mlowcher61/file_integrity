@@ -1,0 +1,58 @@
+---
+# Git backend: clone the baseline repository into the staging directory.
+#
+# The token comes from the "AIDE Baseline Git Token" AAP credential, which
+# injects AIDE_BASELINE_GIT_TOKEN. It is used only on the command line of the
+# clone (no_log) and is removed from the clone's remote URL immediately.
+
+- name: Git backend | Prepare the baseline repository clone
+  delegate_to: localhost
+  become: false
+  run_once: true
+  vars:
+    __aide_fim_repo_is_http: "{{ aide_baseline_repo_url is match('^https?://') }}"
+  block:
+    - name: Git backend | Confirm git is available on the controller
+      ansible.builtin.command:
+        cmd: git --version  # noqa: command-instead-of-module (presence check, not a git operation)
+      changed_when: false
+
+    - name: Git backend | Confirm the baseline repository settings
+      ansible.builtin.assert:
+        that:
+          - aide_baseline_repo_url is string
+          - aide_baseline_repo_url | length > 0
+          - (not __aide_fim_repo_is_http) or (aide_baseline_git_token | length > 0)
+        fail_msg: >-
+          aide_baseline_repo_url must be set and, for http(s) URLs, the
+          AIDE_BASELINE_GIT_TOKEN environment variable must be provided. In AAP,
+          attach an "AIDE Baseline Git Token" credential to the job template.
+        quiet: true
+
+    - name: Git backend | Clone the baseline repository
+      block:
+        - name: Git backend | Clone {{ aide_baseline_repo_url }}
+          ansible.builtin.git:
+            repo: "{{ __aide_fim_repo_auth_url }}"
+            dest: "{{ __aide_fim_stage_dir }}"
+            version: "{{ aide_baseline_repo_branch }}"
+            depth: 1
+            single_branch: true
+            accept_newhostkey: true
+          changed_when: false   # a scratch clone is not a change to any managed system
+          no_log: true
+      rescue:
+        - name: Git backend | Report clone failure
+          ansible.builtin.fail:
+            msg: >-
+              Could not clone the baseline repository {{ aide_baseline_repo_url }}
+              (branch {{ aide_baseline_repo_branch }}). Check that the URL is
+              correct, the branch exists and has at least one commit, and the
+              AIDE Baseline Git Token credential has read/write access.
+
+    # ansible.builtin.git cannot rewrite a remote URL.
+    - name: Git backend | Remove the token from the clone's remote URL  # noqa: command-instead-of-module
+      ansible.builtin.command:
+        cmd: git remote set-url origin {{ aide_baseline_repo_url }}
+        chdir: "{{ __aide_fim_stage_dir }}"
+      changed_when: false

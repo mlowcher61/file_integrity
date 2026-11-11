@@ -1,0 +1,10 @@
+---
+- name: Controller workdir | Remove scratch directory
+  ansible.builtin.file:
+    path: "{{ __aide_fim_workdir.path }}"
+    state: absent
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: __aide_fim_workdir.path is defined

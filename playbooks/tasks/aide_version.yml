@@ -1,0 +1,26 @@
+---
+# Detect the installed AIDE version (needed to render version-specific config).
+# Fails the host with a clear message if AIDE is not installed.
+
+- name: AIDE version | Query the installed AIDE version
+  ansible.builtin.command:
+    cmd: aide --version
+  register: __aide_fim_version_cmd
+  changed_when: false
+  failed_when: false
+
+- name: AIDE version | Fail when AIDE is not installed
+  ansible.builtin.fail:
+    msg: >-
+      AIDE is not installed on {{ inventory_hostname }}. Run the
+      "AIDE - Deploy" job template (playbooks/aide_deploy.yml) first.
+  when: __aide_fim_version_cmd.rc != 0
+
+- name: AIDE version | Record the AIDE version
+  ansible.builtin.set_fact:
+    aide_version: "{{ __output | regex_search('(?m)^A[iI][dD][eE] (\\d.*)$', '\\1') | first }}"
+  vars:
+    __output: >-
+      {{ __aide_fim_version_cmd.stdout
+         if __aide_fim_version_cmd.stdout | length > 0
+         else __aide_fim_version_cmd.stderr }}

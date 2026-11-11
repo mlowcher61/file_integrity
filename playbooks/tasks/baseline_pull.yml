@@ -1,0 +1,96 @@
+---
+# Backend-neutral baseline retrieval.
+#
+# 1. The selected backend (playbooks/tasks/backends/<backend>/pull.yml) stages
+#    the store into "{{ __aide_fim_stage_dir }}" on the controller using the
+#    layout <aide_baseline_path_prefix>/<inventory_hostname>/{aide.db.gz,metadata.yml}.
+# 2. This file then checks, per host, that a baseline exists and that its
+#    sha256 matches metadata.yml.
+#
+# Inputs:
+#   aide_baseline_required (bool, default true) - fail hosts without a baseline
+# Outputs (per host):
+#   aide_baseline_exists   (bool)
+#   aide_baseline_metadata (dict)  - contents of metadata.yml when it exists
+#   aide_baseline_db_path  (str)   - controller path of the verified database
+
+- name: Baseline pull | Confirm the baseline backend is supported
+  ansible.builtin.assert:
+    that:
+      - aide_baseline_backend in __aide_fim_supported_backends
+    fail_msg: >-
+      aide_baseline_backend '{{ aide_baseline_backend }}' is not implemented.
+      Supported backends: {{ __aide_fim_supported_backends | join(', ') }}.
+    quiet: true
+  run_once: true
+
+- name: Baseline pull | Stage the baseline store from the backend
+  ansible.builtin.include_tasks: "backends/{{ aide_baseline_backend }}/pull.yml"
+
+- name: Baseline pull | Look for this host's baseline database
+  ansible.builtin.stat:
+    path: "{{ __aide_fim_host_dir }}/aide.db.gz"
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: __aide_fim_baseline_db_stat
+  delegate_to: localhost
+  become: false
+
+- name: Baseline pull | Record whether a baseline exists
+  ansible.builtin.set_fact:
+    aide_baseline_exists: "{{ __aide_fim_baseline_db_stat.stat.exists }}"
+
+- name: Baseline pull | Fail hosts that have no baseline yet
+  ansible.builtin.fail:
+    msg: >-
+      No AIDE baseline exists for {{ inventory_hostname }} in the
+      {{ aide_baseline_backend }} baseline store
+      ({{ aide_baseline_path_prefix }}/{{ inventory_hostname }}/aide.db.gz).
+      Run the "AIDE - Deploy" job template (playbooks/aide_deploy.yml) for
+      this host first.
+  when:
+    - aide_baseline_required | default(true) | bool
+    - not aide_baseline_exists | bool
+
+- name: Baseline pull | Verify the baseline against its metadata
+  when: aide_baseline_exists | bool
+  block:
+    - name: Baseline pull | Look for metadata.yml
+      ansible.builtin.stat:
+        path: "{{ __aide_fim_host_dir }}/metadata.yml"
+      register: __aide_fim_baseline_meta_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Baseline pull | Fail when metadata.yml is missing
+      ansible.builtin.fail:
+        msg: >-
+          The baseline for {{ inventory_hostname }} has no metadata.yml, so
+          its integrity cannot be verified. Treat it as untrusted. See
+          "Recovering a lost or corrupt baseline" in docs/OPERATIONS.md.
+      when: not __aide_fim_baseline_meta_stat.stat.exists
+
+    - name: Baseline pull | Load metadata.yml
+      ansible.builtin.set_fact:
+        aide_baseline_metadata: "{{ lookup('ansible.builtin.file', __aide_fim_host_dir ~ '/metadata.yml') | from_yaml }}"
+
+    - name: Baseline pull | Verify the baseline sha256 matches metadata.yml
+      ansible.builtin.assert:
+        that:
+          - aide_baseline_metadata.sha256 is defined
+          - aide_baseline_metadata.sha256 == __aide_fim_baseline_db_stat.stat.checksum
+        fail_msg: >-
+          BASELINE INTEGRITY FAILURE for {{ inventory_hostname }}: the stored
+          database sha256 ({{ __aide_fim_baseline_db_stat.stat.checksum }}) does
+          not match metadata.yml ({{ aide_baseline_metadata.sha256 | default('missing') }}).
+          Do not trust this baseline. See "Recovering a lost or corrupt
+          baseline" in docs/OPERATIONS.md.
+        success_msg: >-
+          Baseline for {{ inventory_hostname }} verified (sha256
+          {{ __aide_fim_baseline_db_stat.stat.checksum }}, recorded
+          {{ aide_baseline_metadata.timestamp | default('unknown') }} by
+          {{ aide_baseline_metadata.launched_by | default('unknown') }}).
+
+    - name: Baseline pull | Record the verified baseline path
+      ansible.builtin.set_fact:
+        aide_baseline_db_path: "{{ __aide_fim_host_dir }}/aide.db.gz"

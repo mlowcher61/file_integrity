@@ -1,0 +1,48 @@
+{{ ansible_managed | comment }}
+{{ "system_role:aide" | comment(prefix="", postfix="") }}
+# Managed by Ansible (file_integrity) — do not edit by hand
+#
+# Source   : playbooks/templates/aide.conf.j2 in the file_integrity project
+# Rendered : for AIDE {{ aide_version }}
+# Change the watch list through Ansible variables (see docs/WATCHLIST.md),
+# then run "AIDE - Rebaseline" so the off-host baseline matches.
+
+@@define DBDIR {{ aide_db_dir }}
+@@define LOGDIR {{ aide_log_dir }}
+
+{% if aide_version is version('0.17.0', '>=') %}
+# AIDE >= 0.17 syntax (RHEL 10)
+database_in=file:@@{DBDIR}/aide.db.gz
+log_level=warning
+report_level=changed_attributes
+{% else %}
+# AIDE < 0.17 syntax (RHEL 8 and 9)
+database=file:@@{DBDIR}/aide.db.gz
+verbose=5
+{% endif %}
+database_out=file:@@{DBDIR}/aide.db.new.gz
+gzip_dbout=yes
+
+report_url=file:@@{LOGDIR}/aide.log
+report_url=stdout
+
+# ---------------------------------------------------------------------------
+# Rule groups (aide_rule_groups). Hashes are SHA-512 only (FIPS-appropriate).
+# ---------------------------------------------------------------------------
+{% for name, attributes in aide_rule_groups.items() %}
+{{ name }} = {{ attributes }}
+{% endfor %}
+
+# ---------------------------------------------------------------------------
+# Watched paths (aide_watch_paths + aide_watch_paths_extra, de-duplicated)
+# ---------------------------------------------------------------------------
+{% for entry in aide_watch_paths_merged %}
+{{ entry.path }} {{ entry.rule }}
+{% endfor %}
+
+# ---------------------------------------------------------------------------
+# Exclusions (aide_exclude_paths + aide_exclude_paths_extra)
+# ---------------------------------------------------------------------------
+{% for path in aide_exclude_paths_merged %}
+!{{ path }}
+{% endfor %}

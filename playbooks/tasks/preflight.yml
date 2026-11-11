@@ -1,0 +1,79 @@
+---
+# Pre-flight checks shared by every playbook. Runs per host and fails only
+# the hosts that do not meet the requirements.
+
+- name: Pre-flight | Confirm the host runs a supported RHEL release
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] in aide_supported_distributions
+      - ansible_facts['distribution_major_version'] | string in aide_supported_major_versions
+    fail_msg: >-
+      {{ inventory_hostname }} runs {{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }}. Supported:
+      {{ aide_supported_distributions | join(', ') }} major versions
+      {{ aide_supported_major_versions | join(', ') }}.
+    quiet: true
+
+- name: Pre-flight | Confirm required variables are defined
+  ansible.builtin.assert:
+    that:
+      - aide_rule_groups is mapping
+      - aide_rule_groups | length > 0
+      - aide_watch_paths is sequence
+      - aide_watch_paths_extra is sequence
+      - aide_exclude_paths is sequence
+      - aide_exclude_paths_extra is sequence
+      - aide_schedule_mode in ['aap', 'cron']
+      - aide_baseline_backend is string
+      - aide_baseline_backend | length > 0
+      - aide_db_dir == '/var/lib/aide'
+      - aide_report_max_paths | int > 0
+    fail_msg: >-
+      Required file_integrity variables are missing or invalid. Check
+      aide_rule_groups, aide_watch_paths(_extra), aide_exclude_paths(_extra),
+      aide_schedule_mode (aap|cron), aide_baseline_backend, aide_db_dir
+      (must be /var/lib/aide because the rhel_system_roles aide role hardcodes
+      it) and aide_report_max_paths.
+    quiet: true
+
+- name: Pre-flight | Validate the watch list entries
+  ansible.builtin.assert:
+    that:
+      - __entries | selectattr('path', 'undefined') | list | length == 0
+      - __entries | selectattr('rule', 'undefined') | list | length == 0
+      - __entries | map(attribute='path') | reject('match', '^/') | list | length == 0
+    fail_msg: >-
+      Every aide_watch_paths / aide_watch_paths_extra entry needs a `path`
+      starting with "/" and a `rule`. Got: {{ __entries }}
+    quiet: true
+  vars:
+    __entries: "{{ aide_watch_paths + aide_watch_paths_extra }}"
+
+- name: Pre-flight | Confirm every referenced rule exists in aide_rule_groups
+  ansible.builtin.assert:
+    that:
+      - __missing | length == 0
+    fail_msg: >-
+      These rules are used in the watch list but not defined in
+      aide_rule_groups: {{ __missing | join(', ') }}. Defined groups:
+      {{ aide_rule_groups.keys() | list | join(', ') }}.
+    quiet: true
+  vars:
+    __missing: >-
+      {{ aide_watch_paths_merged | map(attribute='rule') | unique
+         | difference(aide_rule_groups.keys() | list) }}
+
+- name: Pre-flight | Confirm rule groups are well formed and FIPS-appropriate
+  ansible.builtin.assert:
+    that:
+      - aide_rule_groups.keys() | reject('match', '^[A-Za-z][A-Za-z0-9]*$') | list | length == 0
+      - __forbidden | length == 0
+    fail_msg: >-
+      Rule group names may contain only letters and digits (AIDE 0.19+
+      deprecates any other character) and must not use non-FIPS hashes. Forbidden hashes found:
+      {{ __forbidden | join(', ') | default('none', true) }}.
+    quiet: true
+  vars:
+    __forbidden: >-
+      {{ aide_rule_groups.values() | map('split', '+') | flatten
+         | map('trim') | intersect(aide_forbidden_hashes) }}

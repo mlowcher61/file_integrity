@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  author: mlowcher61
+  description: >-
+    Defaults-only role that holds every tunable variable for the file_integrity
+    project at the lowest variable precedence. It contains no tasks.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+        - "10"
+dependencies: []

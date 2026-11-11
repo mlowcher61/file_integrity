@@ -1,0 +1,148 @@
+---
+# =============================================================================
+# file_integrity: default variables
+#
+# These are the LOWEST precedence values. Override them in an AAP inventory,
+# group, or host, in job template extra vars, or (for local runs) in
+# inventory/group_vars/. See docs/WATCHLIST.md for watch list guidance.
+# =============================================================================
+
+# ----- Targeting & platform --------------------------------------------------
+# Plays target "{{ aide_target_hosts | default('aide') }}" (set at launch).
+aide_supported_distributions:
+  - RedHat
+aide_supported_major_versions:
+  - "8"
+  - "9"
+  - "10"
+
+# ----- AIDE paths ------------------------------------------------------------
+# NOTE: the redhat.rhel_system_roles.aide role hardcodes /var/lib/aide for its
+# database paths, so aide_db_dir must stay /var/lib/aide (pre-flight asserts it).
+aide_db_dir: /var/lib/aide
+aide_log_dir: /var/log/aide
+
+# Template rendered to /etc/aide.conf.
+aide_config_template_src: "{{ playbook_dir }}/templates/aide.conf.j2"
+
+# ----- Rule groups -----------------------------------------------------------
+# Name -> AIDE attribute expression. Use only FIPS-approved hashes (sha512).
+aide_rule_groups:
+  # Full content + metadata integrity (binaries, config, boot files, keys).
+  CONTENTEX: "sha512+ftype+p+u+g+n+acl+selinux+xattrs"
+  # Ownership and permissions only (content expected to change).
+  PERMS: "p+u+g+acl+selinux+xattrs"
+  # Log files: they grow, so no hashes/size; only identity and permissions.
+  LOG: "p+u+g+n+acl+selinux+ftype"
+
+# Hash algorithms that must never appear in a rule group (not FIPS approved).
+aide_forbidden_hashes:
+  - md5
+  - sha1
+  - rmd160
+  - tiger
+  - crc32
+  - crc32b
+  - haval
+  - gost
+  - whirlpool
+
+# ----- Watch list ------------------------------------------------------------
+# Baseline set every host gets. `path` is an AIDE selection expression
+# (a regular expression anchored at the start), `rule` is a key of
+# aide_rule_groups.
+aide_watch_paths:
+  - { path: /boot, rule: CONTENTEX }
+  - { path: /etc, rule: CONTENTEX }
+  - { path: /usr/bin, rule: CONTENTEX }
+  - { path: /usr/sbin, rule: CONTENTEX }
+  - { path: /usr/lib, rule: CONTENTEX }
+  - { path: /usr/lib64, rule: CONTENTEX }
+  - { path: /root/.ssh, rule: CONTENTEX }
+  - { path: /var/log, rule: LOG }
+
+# Group- or host-level additions. Same shape as aide_watch_paths.
+# An entry whose path is already in aide_watch_paths overrides its rule.
+aide_watch_paths_extra: []
+
+# Paths AIDE must ignore (rendered as "!<path>").
+aide_exclude_paths:
+  - /etc/mtab              # symlink to /proc/self/mounts; changes constantly
+  - /etc/.*~               # editor backup files
+  - /var/log/journal       # binary journal; rotated and rewritten by systemd
+  - /var/lib/aide          # AIDE's own databases
+  - /var/log/aide          # AIDE's own reports
+
+# Group- or host-level additional exclusions.
+aide_exclude_paths_extra: []
+
+# Computed. Do not override. De-duplicated by path; later entries win.
+aide_watch_paths_merged: >-
+  {{ (aide_watch_paths + aide_watch_paths_extra)
+     | items2dict(key_name='path', value_name='rule')
+     | dict2items(key_name='path', value_name='rule') }}
+aide_exclude_paths_merged: "{{ (aide_exclude_paths + aide_exclude_paths_extra) | unique }}"
+
+# ----- Scheduling ------------------------------------------------------------
+# aap  : the AAP schedule runs AIDE - Check against the OFF-HOST baseline and
+#        the role's cron entry is removed (recommended).
+# cron : the role adds an /etc/crontab entry that checks against the ON-HOST
+#        database (weaker trust guarantee; see docs/DESIGN.md).
+aide_schedule_mode: aap
+# aide_cron_interval (cron mode only) is intentionally NOT defined here: the
+# redhat.rhel_system_roles.aide role's own default ("0 12 * * *") takes
+# precedence over this file. Set it in your inventory / AAP (any level) to
+# change it, e.g.  aide_cron_interval: "0 3 * * *"
+
+# ----- Check / report behaviour ---------------------------------------------
+# Fail the host when AIDE detects any added, removed, or changed entry.
+aide_fail_on_change: true
+# Maximum number of changed paths listed per host in job output / set_stats.
+aide_report_max_paths: 200
+# Seconds an `aide --init/--check/--update` may run before Ansible gives up.
+aide_command_timeout: 3600
+
+# ----- Deploy / rebaseline ---------------------------------------------------
+# Re-initialize even if a baseline for the host already exists.
+aide_force_init: false
+# Change reference (e.g. ServiceNow CHG number). Required by aide_rebaseline.yml.
+aide_change_ref: ""
+aide_change_ref_pattern: "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+
+# ----- Baseline store --------------------------------------------------------
+# Backend that stores known-good baselines off-host. Only `git` is implemented.
+aide_baseline_backend: git
+aide_baseline_repo_url: https://github.com/mlowcher61/file_integrity_baselines.git
+aide_baseline_repo_branch: main
+# Directory inside the baseline repo that holds baselines/<host>/...
+aide_baseline_path_prefix: baselines
+# HTTPS username paired with the token. GitHub and GitLab accept any
+# non-empty value with a personal/project access token.
+aide_baseline_git_username: oauth2
+# Injected by the "AIDE Baseline Git Token" AAP credential. Never put the
+# token itself in this repository.
+aide_baseline_git_token: "{{ lookup('ansible.builtin.env', 'AIDE_BASELINE_GIT_TOKEN') }}"
+aide_baseline_git_author_name: AAP file_integrity
+aide_baseline_git_author_email: file-integrity@localhost
+
+# ----- Job metadata (recorded in baselines/<host>/metadata.yml) -------------
+aide_job_id: "{{ awx_job_id | default(tower_job_id) | default('local') }}"
+aide_launched_by: >-
+  {{ awx_user_name | default(tower_user_name)
+     | default(lookup('ansible.builtin.env', 'USER'), true) | default('unknown', true) }}
+
+# ----- Internal (do not override) -------------------------------------------
+__aide_fim_supported_backends:
+  - git
+__aide_fim_stage_dir: "{{ __aide_fim_workdir.path }}/store"
+__aide_fim_fetch_dir: "{{ __aide_fim_workdir.path }}/fetched"
+# Where ansible.builtin.fetch (and the aide role) place a host's new database.
+__aide_fim_fetched_db: "{{ __aide_fim_fetch_dir }}/{{ inventory_hostname }}{{ aide_db_dir }}/aide.db.new.gz"
+__aide_fim_host_dir: "{{ __aide_fim_stage_dir }}/{{ aide_baseline_path_prefix }}/{{ inventory_hostname }}"
+# Baseline repo URL with credentials embedded (http(s) only). Only ever used
+# in tasks marked no_log.
+__aide_fim_repo_auth_url: >-
+  {{ aide_baseline_repo_url | regex_replace('^(https?://)',
+     '\\1' ~ (aide_baseline_git_username | urlencode) ~ ':' ~ (aide_baseline_git_token | urlencode) ~ '@')
+     if (aide_baseline_repo_url is match('^https?://') and aide_baseline_git_token | length > 0)
+     else aide_baseline_repo_url }}

@@ -1,0 +1,87 @@
+---
+# Git backend: commit the staged baselines and push them.
+# Runs on the controller (delegate_to localhost, run_once) from baseline_push.yml.
+# Any failure to push fails the play; it never silently continues.
+# ansible.builtin.git can clone/update but cannot add, commit or push, so
+# those steps use the git CLI (command-instead-of-module is suppressed).
+
+- name: Git backend | Stage baseline changes  # noqa: command-instead-of-module
+  ansible.builtin.command:
+    cmd: git add --all -- {{ aide_baseline_path_prefix }}
+    chdir: "{{ __aide_fim_stage_dir }}"
+  changed_when: false
+
+- name: Git backend | Check for staged changes  # noqa: command-instead-of-module
+  ansible.builtin.command:
+    cmd: git status --porcelain -- {{ aide_baseline_path_prefix }}
+    chdir: "{{ __aide_fim_stage_dir }}"
+  register: __aide_fim_git_status
+  changed_when: false
+
+- name: Git backend | Commit and push
+  when: __aide_fim_git_status.stdout | length > 0
+  block:
+    - name: Git backend | Commit baselines
+      ansible.builtin.command:
+        argv:
+          - git
+          - -c
+          - "user.name={{ aide_baseline_git_author_name }}"
+          - -c
+          - "user.email={{ aide_baseline_git_author_email }}"
+          - commit
+          - --quiet
+          - -m
+          - "{{ __aide_fim_commit_subject | trim }}"
+          - -m
+          - "{{ __aide_fim_commit_body }}"
+        chdir: "{{ __aide_fim_stage_dir }}"
+      changed_when: true
+
+    - name: Git backend | Push baselines to {{ aide_baseline_repo_url }}
+      ansible.builtin.command:
+        argv:
+          - git
+          - push
+          - --porcelain
+          - "{{ __aide_fim_repo_auth_url }}"
+          - "HEAD:refs/heads/{{ aide_baseline_repo_branch }}"
+        chdir: "{{ __aide_fim_stage_dir }}"
+      register: __aide_fim_git_push
+      changed_when: __aide_fim_git_push.rc == 0
+      failed_when: false
+      no_log: true
+
+    - name: Git backend | Fail when the push did not succeed
+      ansible.builtin.fail:
+        msg: >-
+          Pushing baselines to {{ aide_baseline_repo_url }} (branch
+          {{ aide_baseline_repo_branch }}) FAILED. The new baselines were NOT
+          persisted, so do not treat them as the known-good state. Re-run the
+          job. If another job pushed at the same time, simply re-running is
+          enough. Git said:
+          {{ __stderr }}
+      when: __aide_fim_git_push.rc != 0
+      vars:
+        __stderr: >-
+          {{ (__aide_fim_git_push.stderr | default(''))
+             | replace(aide_baseline_git_token if aide_baseline_git_token | length > 0 else '\u0000', '********') }}
+
+    - name: Git backend | Read the new commit id
+      ansible.builtin.command:
+        cmd: git rev-parse --short HEAD
+        chdir: "{{ __aide_fim_stage_dir }}"
+      register: __aide_fim_git_head
+      changed_when: false
+
+    - name: Git backend | Report the published baseline commit
+      ansible.builtin.debug:
+        msg: >-
+          Baselines for {{ aide_baseline_push_hosts | join(', ') }} pushed to
+          {{ aide_baseline_repo_url }} ({{ aide_baseline_repo_branch }}) as commit
+          {{ __aide_fim_git_head.stdout }}.
+
+- name: Git backend | Report when there was nothing to commit
+  ansible.builtin.debug:
+    msg: Baseline store already up to date; nothing to commit.
+  when: __aide_fim_git_status.stdout | length == 0

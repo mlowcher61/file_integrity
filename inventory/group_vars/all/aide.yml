@@ -1,0 +1,19 @@
+---
+# Site-wide overrides for LOCAL runs (ansible-navigator / ansible-playbook
+# with inventory/example.yml).
+#
+# The full set of defaults (watch list, rule groups, exclusions, schedule,
+# baseline store) lives in playbooks/roles/file_integrity_defaults/defaults/main.yml so
+# it is loaded no matter which inventory AAP uses. Copy any variable from
+# there into this file, an AAP inventory/group/host, or job template extra
+# vars to override it. See the variable reference in README.md.
+
+# Where known-good baselines are stored (private repository).
+aide_baseline_repo_url: https://github.com/mlowcher61/file_integrity_baselines.git
+aide_baseline_repo_branch: main
+
+# aap (recommended) or cron. See docs/DESIGN.md for the trade-offs.
+aide_schedule_mode: aap
+
+# Fail a host when any change is detected.
+aide_fail_on_change: true

@@ -1,0 +1,95 @@
+---
+# AIDE - Validate Config
+#
+# Renders the managed aide.conf to a temporary file on each host and runs
+# `aide --config-check` against it. Makes NO lasting changes: /etc/aide.conf,
+# the AIDE database and the baseline store are not touched.
+
+- name: AIDE | Validate the managed AIDE configuration
+  hosts: "{{ aide_target_hosts | default('aide') }}"
+  become: true
+  gather_facts: true
+  gather_subset:
+    - min
+  roles:
+    - role: file_integrity_defaults
+
+  tasks:
+    - name: Validate | Run pre-flight checks
+      ansible.builtin.include_tasks: tasks/preflight.yml
+
+    - name: Validate | Detect the installed AIDE version
+      ansible.builtin.include_tasks: tasks/aide_version.yml
+
+    - name: Validate | Render and check the configuration in a temporary file
+      block:
+        - name: Validate | Create a temporary file
+          ansible.builtin.tempfile:
+            state: file
+            prefix: aide.conf.
+          register: __aide_fim_tmpconf
+          changed_when: false
+
+        - name: Validate | Render the managed configuration to the temporary file
+          ansible.builtin.template:
+            src: "{{ aide_config_template_src }}"
+            dest: "{{ __aide_fim_tmpconf.path }}"
+            mode: "0600"
+          changed_when: false
+
+        - name: Validate | Run aide --config-check
+          ansible.builtin.command:
+            argv:
+              - aide
+              - --config-check
+              - -c
+              - "{{ __aide_fim_tmpconf.path }}"
+          register: __aide_fim_config_check
+          changed_when: false
+          failed_when: false
+
+        - name: Validate | Compare with the live /etc/aide.conf (check mode; changed means Deploy would update it)
+          ansible.builtin.template:
+            src: "{{ aide_config_template_src }}"
+            dest: /etc/aide.conf
+            mode: "0400"
+          check_mode: true
+          diff: true
+          register: __aide_fim_config_diff
+      always:
+        - name: Validate | Remove the temporary file
+          ansible.builtin.file:
+            path: "{{ __aide_fim_tmpconf.path }}"
+            state: absent
+          changed_when: false
+          when: __aide_fim_tmpconf.path is defined
+
+    - name: Validate | Publish results
+      ansible.builtin.set_stats:
+        data:
+          aide_config_validation: "{{ {inventory_hostname: __result} }}"
+        aggregate: true
+      vars:
+        __result:
+          valid: "{{ __aide_fim_config_check.rc == 0 }}"
+          deploy_would_change_config: "{{ __aide_fim_config_diff is changed }}"
+          aide_version: "{{ aide_version }}"
+
+    - name: Validate | Show the result for this host
+      vars:
+        __live_msg: >-
+          {{ 'Deploy/Check would UPDATE /etc/aide.conf (see diff above)'
+             if __aide_fim_config_diff is changed else '/etc/aide.conf already matches' }}
+      ansible.builtin.debug:
+        msg:
+          - "Host:    {{ inventory_hostname }} (AIDE {{ aide_version }})"
+          - "Config:  {{ 'VALID' if __aide_fim_config_check.rc == 0 else 'INVALID (rc ' ~ __aide_fim_config_check.rc ~ ')' }}"
+          - "Live:    {{ __live_msg }}"
+          - "Output:  {{ ((__aide_fim_config_check.stdout ~ '\n' ~ __aide_fim_config_check.stderr) | trim) or 'none' }}"
+
+    - name: Validate | Fail hosts whose rendered configuration is invalid
+      ansible.builtin.fail:
+        msg: >-
+          aide --config-check rejected the rendered configuration on
+          {{ inventory_hostname }}: {{ __aide_fim_config_check.stderr | default('') | trim }}
+      when: __aide_fim_config_check.rc != 0
