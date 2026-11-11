@@ -23,7 +23,6 @@
       - aide_watch_paths_extra is sequence
       - aide_exclude_paths is sequence
       - aide_exclude_paths_extra is sequence
-      - aide_schedule_mode in ['aap', 'cron']
       - aide_baseline_backend is string
       - aide_baseline_backend | length > 0
       - aide_db_dir == '/var/lib/aide'
@@ -31,7 +30,7 @@
     fail_msg: >-
       Required file_integrity variables are missing or invalid. Check
       aide_rule_groups, aide_watch_paths(_extra), aide_exclude_paths(_extra),
-      aide_schedule_mode (aap|cron), aide_baseline_backend, aide_db_dir
+      aide_baseline_backend, aide_db_dir
       (must be /var/lib/aide because the rhel_system_roles aide role hardcodes
       it) and aide_report_max_paths.
     quiet: true

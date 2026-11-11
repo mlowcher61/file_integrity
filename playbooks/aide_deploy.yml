@@ -41,17 +41,33 @@
              if __aide_fim_needs_init | bool
              else 'Baseline already exists in the store; skipping initialization (set aide_force_init=true to replace it)' }}
 
-    - name: Deploy | Install, configure and (if needed) initialize AIDE with the system role
+    # Two passes, because inside the role `aide --init` runs BEFORE the cron
+    # task. Removing the cron entry first means /etc/crontab is already in its
+    # final state when the baseline is taken.
+    - name: Deploy | Install and configure AIDE and remove any AIDE cron entry
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.aide
+      vars:
+        aide_config_template: "{{ aide_config_template_src }}"
+        aide_init: false
+        aide_fetch_db: false
+        aide_check: false
+        aide_update: false
+        # Scheduling is done by AAP; remove any on-host AIDE cron entry.
+        aide_cron_check: false
+
+    - name: Deploy | Initialize the AIDE database and fetch it to the controller
       ansible.builtin.include_role:
         name: redhat.rhel_system_roles.aide
       vars:
         aide_config_template: "{{ aide_config_template_src }}"
         aide_db_fetch_dir: "{{ __aide_fim_fetch_dir }}"
-        aide_init: "{{ __aide_fim_needs_init | bool }}"
-        aide_fetch_db: "{{ __aide_fim_needs_init | bool }}"
+        aide_init: true
+        aide_fetch_db: true
         aide_check: false
         aide_update: false
-        aide_cron_check: "{{ aide_schedule_mode == 'cron' }}"
+        aide_cron_check: false
+      when: __aide_fim_needs_init | bool
 
     - name: Deploy | Install the new database as the on-host reference database
       ansible.builtin.copy:

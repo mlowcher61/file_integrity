@@ -44,7 +44,8 @@
         aide_fetch_db: false
         aide_check: false
         aide_update: false
-        aide_cron_check: "{{ aide_schedule_mode == 'cron' }}"
+        # Scheduling is done by AAP; remove any on-host AIDE cron entry.
+        aide_cron_check: false
 
     - name: Rebaseline | Create a controller scratch directory
       ansible.builtin.include_tasks: tasks/controller_workdir.yml

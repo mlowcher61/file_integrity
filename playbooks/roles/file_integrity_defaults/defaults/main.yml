@@ -83,16 +83,11 @@ aide_watch_paths_merged: >-
      | dict2items(key_name='path', value_name='rule') }}
 aide_exclude_paths_merged: "{{ (aide_exclude_paths + aide_exclude_paths_extra) | unique }}"
 
-# ----- Scheduling ------------------------------------------------------------
-# aap  : the AAP schedule runs AIDE - Check against the OFF-HOST baseline and
-#        the role's cron entry is removed (recommended).
-# cron : the role adds an /etc/crontab entry that checks against the ON-HOST
-#        database (weaker trust guarantee; see docs/DESIGN.md).
-aide_schedule_mode: aap
-# aide_cron_interval (cron mode only) is intentionally NOT defined here: the
-# redhat.rhel_system_roles.aide role's own default ("0 12 * * *") takes
-# precedence over this file. Set it in your inventory / AAP (any level) to
-# change it, e.g.  aide_cron_interval: "0 3 * * *"
+# ----- Scheduling -----------------------------------------------------------
+# Checks are scheduled ONLY by Ansible Automation Platform (schedule
+# "AIDE - Daily Check", see aap/vars/schedules.yml). The playbooks always pass
+# aide_cron_check: false to the system role, which removes any on-host AIDE
+# cron entry, so every check runs against the verified off-host baseline.
 
 # ----- Check / report behaviour ---------------------------------------------
 # Fail the host when AIDE detects any added, removed, or changed entry.
