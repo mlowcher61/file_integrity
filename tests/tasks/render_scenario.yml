@@ -1,0 +1,46 @@
+---
+- name: "Render | Load overrides for {{ scenario.name }}"
+  ansible.builtin.include_vars:
+    file: "{{ scenario.extra_vars_file }}"
+    name: __overrides
+  when: scenario.extra_vars_file | length > 0
+
+- name: "Render | Render the template for {{ scenario.name }}"
+  ansible.builtin.template:
+    src: "{{ aide_config_template_src }}"
+    dest: "{{ __tmp.path }}/{{ scenario.name }}.conf"
+    mode: "0600"
+  vars:
+    aide_version: "{{ scenario.aide_version }}"
+    aide_watch_paths_extra: "{{ __overrides.aide_watch_paths_extra | default([]) if scenario.extra_vars_file | length > 0 else [] }}"
+    aide_exclude_paths_extra: "{{ __overrides.aide_exclude_paths_extra | default([]) if scenario.extra_vars_file | length > 0 else [] }}"
+
+- name: "Render | Validate the rendered file for {{ scenario.name }}"
+  ansible.builtin.assert:
+    that:
+      - "'# Managed by Ansible (file_integrity)' in __text"
+      - "'system_role:aide' in __text"
+      - __selection_paths | length > 0
+      - __selection_paths | length == __selection_paths | unique | length
+      - __used_rules | difference(__defined_rules) | length == 0
+      - __hashes_used | intersect(aide_forbidden_hashes) | length == 0
+      - "'sha512' in __hashes_used"
+      - (scenario.aide_version is version('0.17.0', '>=')) == ('database_in=' in __text)
+      - (scenario.aide_version is version('0.17.0', '<')) == ('verbose=5' in __text)
+    fail_msg: |
+      Rendered config for {{ scenario.name }} failed validation.
+      selection paths: {{ __selection_paths }}
+      used rules: {{ __used_rules }}  defined: {{ __defined_rules }}
+      hashes used: {{ __hashes_used }}
+    success_msg: >-
+      {{ scenario.name }}: {{ __selection_paths | length }} unique watched paths,
+      rules {{ __used_rules | join(', ') }} all defined, hashes OK.
+  vars:
+    __text: "{{ lookup('ansible.builtin.file', __tmp.path ~ '/' ~ scenario.name ~ '.conf') }}"
+    __lines: "{{ __text.splitlines() | map('trim') | reject('match', '^(#|$|@@)') | list }}"
+    __rule_lines: "{{ __lines | select('match', '^[A-Za-z][A-Za-z0-9]* = ') | list }}"
+    __defined_rules: "{{ __rule_lines | map('regex_replace', '^([A-Za-z0-9]+) = .*$', '\\1') | list }}"
+    __hashes_used: "{{ __rule_lines | map('regex_replace', '^[A-Za-z0-9]+ = ', '') | map('split', '+') | flatten | list }}"
+    __selection_lines: "{{ __lines | select('match', '^/') | list }}"
+    __selection_paths: "{{ __selection_lines | map('split', ' ') | map('first') | list }}"
+    __used_rules: "{{ __selection_lines | map('split', ' ') | map('last') | unique | list }}"

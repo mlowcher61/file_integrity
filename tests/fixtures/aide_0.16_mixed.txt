@@ -1,0 +1,61 @@
+Start timestamp: 2026-11-11 20:20:42 +0000 (AIDE 0.16)
+AIDE found differences between database and filesystem!!
+
+Summary:
+  Total number of entries:	498
+  Added entries:		2
+  Removed entries:		1
+  Changed entries:		2
+
+---------------------------------------------------
+Added entries:
+---------------------------------------------------
+
+f++++++++++++++++: /etc/cron.d/fi-test-backdoor
+f++++++++++++++++: /root/.ssh/authorized_keys
+
+---------------------------------------------------
+Removed entries:
+---------------------------------------------------
+
+f----------------: /etc/motd
+
+---------------------------------------------------
+Changed entries:
+---------------------------------------------------
+
+f   ...    .C... : /etc/hosts
+f   ...    .C... : /usr/sbin/fi-test-binary
+
+---------------------------------------------------
+Detailed information about changes:
+---------------------------------------------------
+
+File: /etc/hosts
+  SHA512   : yylpt3QfCroR22f6RhI2jH1mLuYYWLCQ | qs9M5hMkou5ot89hB8aVBegh9VRuVmPx
+             KPpfn/fn/jLT6LMqEAuiFOxng+yfUP90 | vJDaN3TcT6k52xMYjFnot4xWaZctIR1b
+             bKDyL+yTEOwWBZchd+Cy8Q==         | OY7WCpwgx2LHN3V/tMRPsQ==
+
+File: /usr/sbin/fi-test-binary
+  SHA512   : YIY15TBP9sed8sbJ0ua7qY5I/rOyjaC+ | VDZIJNdi/vCxtlcqY1o7vwqfpJGIfzDH
+             UdUN/2VkcyiJsjiUw/HtbEnjoRhfpXAQ | AFLQYLon40UBBkw8GI0hNJjwTDqnX5YR
+             oIiSnjfYRKC5tdpZlMK7NQ==         | ojFYG/bParfpUjFbdTJlJw==
+
+
+---------------------------------------------------
+The attributes of the (uncompressed) database(s):
+---------------------------------------------------
+
+/var/lib/aide/aide.db.gz
+  MD5      : EwdMGUalbe92/qC0PaXgpQ==
+  SHA1     : vLhcdxYj/ys7iDJAwSfi21n316A=
+  RMD160   : 2sihvjLtukoA7MdF9kX4F6cox/o=
+  TIGER    : DdgRZLkLOpHFjNneXzR4su35gjf9O1SQ
+  SHA256   : qbnJBsmKv2Da5kz6iaLYmowMsNPzzge2
+             weemmO3Ohqw=
+  SHA512   : hSLPA7MJms3+jjBCPCZlcbwvGIsq+phv
+             vFBlN41apyAyHcrpFEf27w9a1hzraVgi
+             H5HQnQQOHCV5V0FEIzbgkg==
+
+
+End timestamp: 2026-11-11 20:20:42 +0000 (run time: 0m 0s)

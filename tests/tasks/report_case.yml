@@ -1,0 +1,26 @@
+---
+- name: "Case | Parse {{ case.fixture }}"
+  ansible.builtin.include_tasks: ../../playbooks/tasks/report.yml
+  vars:
+    aide_report_max_paths: "{{ case.max_paths }}"
+    aide_report_stats_key: aide_test_results
+    aide_report_result:
+      rc: "{{ case.rc }}"
+      stdout: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/fixtures/' ~ case.fixture) if case.rc != 17 else '' }}"
+      stderr: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/fixtures/' ~ case.fixture) if case.rc == 17 else '' }}"
+
+- name: "Case | Check the parsed report for {{ case.fixture }}"
+  ansible.builtin.assert:
+    that:
+      - aide_report.status == case.expect.status
+      - aide_report.added | int == case.expect.added
+      - aide_report.removed | int == case.expect.removed
+      - aide_report.changed | int == case.expect.changed
+      - aide_report.total_entries | int == case.expect.total
+      - aide_report.added_paths == case.expect_paths.added
+      - aide_report.removed_paths == case.expect_paths.removed
+      - aide_report.changed_paths == case.expect_paths.changed
+      - (aide_report.paths_truncated | bool) == (aide_report.paths_total | int > case.max_paths | int)
+      - (case.expect.status != 'error') or (aide_report.error | length > 0)
+    fail_msg: "Unexpected report for {{ case.fixture }}: {{ aide_report }}"
+    quiet: true

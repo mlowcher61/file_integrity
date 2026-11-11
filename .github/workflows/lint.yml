@@ -1,0 +1,91 @@
+---
+name: lint
+
+"on":
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    name: Lint and test (ansible-core ${{ matrix.ansible-core }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 2.16 matches the AAP 2.6 supported execution environments;
+        # "latest" catches upcoming behaviour changes early.
+        ansible-core: ["2.16", "latest"]
+    env:
+      ANSIBLE_COLLECTIONS_PATH: ./collections:./aap/collections
+      ANSIBLE_FORCE_COLOR: "1"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible-core, ansible-lint and yamllint
+        run: |
+          python -m pip install --upgrade pip
+          if [ "${{ matrix.ansible-core }}" = "latest" ]; then
+            pip install ansible-core ansible-lint yamllint
+          else
+            pip install "ansible-core~=${{ matrix.ansible-core }}.0" ansible-lint yamllint
+          fi
+          ansible --version
+
+      - name: Install collections available on Ansible Galaxy
+        run: |
+          ansible-galaxy collection install ansible.posix community.general -p collections
+          # Only needed so configure_aap.yml can be syntax-checked; its
+          # certified dependencies are not needed for that.
+          ansible-galaxy collection install infra.aap_configuration --no-deps -p aap/collections
+
+      # Optional: add an AUTOMATION_HUB_TOKEN repository secret to also install
+      # redhat.rhel_system_roles. The checks below pass without it because the
+      # playbooks load the role dynamically (include_role).
+      - name: Install certified collections from Automation Hub (optional)
+        env:
+          AH_TOKEN: ${{ secrets.AUTOMATION_HUB_TOKEN }}
+        if: env.AH_TOKEN != ''
+        run: |
+          cat > /tmp/ansible.cfg <<CFG
+          [galaxy]
+          server_list = automation_hub, galaxy
+          [galaxy_server.automation_hub]
+          url = https://console.redhat.com/api/automation-hub/content/published/
+          auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+          token = ${AH_TOKEN}
+          [galaxy_server.galaxy]
+          url = https://galaxy.ansible.com/
+          CFG
+          ANSIBLE_CONFIG=/tmp/ansible.cfg ansible-galaxy collection install redhat.rhel_system_roles -p collections
+
+      - name: yamllint
+        run: yamllint --strict .
+
+      - name: ansible-lint (production profile)
+        run: ansible-lint --profile production
+
+      - name: Syntax-check every playbook
+        run: |
+          for playbook in playbooks/*.yml tests/test_*.yml aap/configure_aap.yml; do
+            echo "::group::${playbook}"
+            ansible-playbook --syntax-check "${playbook}"
+            echo "::endgroup::"
+          done
+
+      - name: Template render test
+        run: ansible-playbook tests/test_render.yml
+
+      - name: Report parser test
+        run: ansible-playbook tests/test_report.yml

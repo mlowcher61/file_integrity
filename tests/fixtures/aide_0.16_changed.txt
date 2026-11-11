@@ -1,0 +1,42 @@
+Start timestamp: 2026-11-11 20:18:01 +0000 (AIDE 0.16)
+AIDE found differences between database and filesystem!!
+
+Summary:
+  Total number of entries:	495
+  Added entries:		0
+  Removed entries:		0
+  Changed entries:		1
+
+---------------------------------------------------
+Changed entries:
+---------------------------------------------------
+
+f   ...    .C... : /etc/aide.conf
+
+---------------------------------------------------
+Detailed information about changes:
+---------------------------------------------------
+
+File: /etc/aide.conf
+  SHA512   : KubIQ9yRaYatUOo0uM2pQrhMfRNWIvS4 | PxR1WCfRNaKoTodjhs1vbsBJZWK4cSWk
+             RUmetlWzMMrfMlKHblgsI8a/eHl+Rl0q | KysdhLivebL7Rq43OGbQDutJj2b6fVjr
+             S8OcOOee2cyT0g5Lsuj1kQ==         | 32+6gZqCK2nCi9V+UAuENQ==
+
+
+---------------------------------------------------
+The attributes of the (uncompressed) database(s):
+---------------------------------------------------
+
+/var/lib/aide/aide.db.gz
+  MD5      : AKYydABHdBmCVPOPHwIQ3A==
+  SHA1     : c14zUEGx4TBaQsq5n4i/erDc1Ss=
+  RMD160   : XX0GdyVWmI6T3KYrkc2SnY9LqZI=
+  TIGER    : fPB3ku4EzQ/6NVTcyQrW6qQp2CgBc5AZ
+  SHA256   : tLj4bs5lZo67vbuiZyi/vAInQUs5haV3
+             HSLrAeDfBKw=
+  SHA512   : C7HNdguWiDUdiBPstWjswYq/GyxonxTO
+             npiRcDV+MbVuhSLiMUiZouom+In9JwN0
+             LncY0zSsWUvaRr1l0frX2A==
+
+
+End timestamp: 2026-11-11 20:18:01 +0000 (run time: 0m 0s)

@@ -1,0 +1,9 @@
+---
+# /etc appears in the global list too; the merge must keep exactly one /etc
+# line and use this rule for it.
+aide_watch_paths_extra:
+  - { path: /etc, rule: PERMS }
+  - { path: /opt/app/bin, rule: CONTENTEX }
+  - { path: /opt/app/bin, rule: CONTENTEX }
+aide_exclude_paths_extra:
+  - /etc/mtab

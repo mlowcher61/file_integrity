@@ -1,0 +1,69 @@
+Start timestamp: 2026-11-11 20:20:42 +0000 (AIDE 0.19.2)
+AIDE found differences between database and filesystem!!
+
+Summary:
+  Total number of entries:	1159
+  Added entries:		2
+  Removed entries:		1
+  Changed entries:		2
+
+---------------------------------------------------
+Added entries:
+---------------------------------------------------
+
+f+++++++++++++++++: /etc/cron.d/fi-test-backdoor
+f+++++++++++++++++: /root/.ssh/authorized_keys
+
+---------------------------------------------------
+Removed entries:
+---------------------------------------------------
+
+f-----------------: /etc/motd
+
+---------------------------------------------------
+Changed entries:
+---------------------------------------------------
+
+f   ...    .H...  : /etc/hosts
+f   ...    .H...  : /usr/sbin/fi-test-binary
+
+---------------------------------------------------
+Detailed information about changes:
+---------------------------------------------------
+
+File: /etc/hosts
+ SHA512    : IGtQPh5xQpisR8jUufBeWmebQBZd7nxZ | Uo+VC5nvqkrSrGOoyiCEhFYGZnoXy8is
+             NGE31OXynOfGeh1wbmn9s4LKDaiSFmrF | LJpjP1YcHiegDL7XwSGGh06eWNz6Z5pd
+             ndAVjBem3VKnJQyLT9C1kQ==         | xILkavi7mzcurZkaoJcfjw==
+
+File: /usr/sbin/fi-test-binary
+ SHA512    : YIY15TBP9sed8sbJ0ua7qY5I/rOyjaC+ | VDZIJNdi/vCxtlcqY1o7vwqfpJGIfzDH
+             UdUN/2VkcyiJsjiUw/HtbEnjoRhfpXAQ | AFLQYLon40UBBkw8GI0hNJjwTDqnX5YR
+             oIiSnjfYRKC5tdpZlMK7NQ==         | ojFYG/bParfpUjFbdTJlJw==
+
+
+---------------------------------------------------
+The attributes of the (uncompressed) database(s):
+---------------------------------------------------
+
+/var/lib/aide/aide.db.gz
+ SHA256    : /sGhPxN5Yh3A6yIPeBYVPDlHsO0taVvL
+             1BLZ4E+ZGYc=
+ SHA512    : jeXwaodkKg2FjCmyxQedsxTkWVJg+5U8
+             O1qakOmFQMmm8wJ8dK1F99MNUYC5q38w
+             aJ/kexNjQo2kPqNYJqAFeQ==
+ STRIBOG256: Ge8pZSBs6h/BpVuypsponhlG1ia4iPMt
+             dK3gmVP2yyY=
+ STRIBOG512: YHtqpOIofLWMP+Vm5pyrr/GgQwSeeTY/
+             6r3tSb9S8z+Tjq3Q7Gb1VmYArcpjXSaH
+             MGeLlTUKWlYcJIt2uNXJYA==
+ SHA512/256: E0q+yWTBtCyx0OUi06bMdv52LhGHr7VD
+             5l340gUaH64=
+ SHA3-256  : 4R6et6MVBsEANJ+vZJe9LzmWNJIOU6yg
+             QxQtihJXEaU=
+ SHA3-512  : sxm17MRh+WnIlmPusJBAdMD/EBaQsHuL
+             zO84RZyAaKPC5QiOdvL4aUDMCFDBRPwA
+             VzecwCQxI7vnPi+PdwLG7Q==
+
+
+End timestamp: 2026-11-11 20:20:42 +0000 (run time: 0m 0s)

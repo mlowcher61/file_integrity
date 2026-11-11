@@ -1,0 +1,2 @@
+Couldn't open file /etc/aide.conf.broken for reading
+Configuration error

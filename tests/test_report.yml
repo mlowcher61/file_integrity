@@ -1,0 +1,67 @@
+---
+# Report parser test (run in CI, no target hosts needed):
+#   ansible-playbook tests/test_report.yml
+#
+# Feeds captured `aide --check` output (tests/fixtures/*.txt) through
+# playbooks/tasks/report.yml and asserts on the parsed counts and paths.
+
+- name: Test | Parse captured AIDE output with report.yml
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: file_integrity_defaults
+  vars:
+    __cases:
+      - fixture: aide_0.16_changed.txt
+        rc: 4
+        expect: { status: changes, added: 0, removed: 0, changed: 1, total: 495 }
+        expect_paths: { added: [], removed: [], changed: [/etc/aide.conf] }
+        max_paths: 200
+      - fixture: aide_0.19_changed.txt
+        rc: 4
+        expect: { status: changes, added: 0, removed: 0, changed: 1, total: 1156 }
+        expect_paths: { added: [], removed: [], changed: [/etc/aide.conf] }
+        max_paths: 200
+      - fixture: aide_0.16_mixed.txt
+        rc: 7
+        expect: { status: changes, added: 2, removed: 1, changed: 2, total: 498 }
+        expect_paths:
+          added: [/etc/cron.d/fi-test-backdoor, /root/.ssh/authorized_keys]
+          removed: [/etc/motd]
+          changed: [/etc/hosts, /usr/sbin/fi-test-binary]
+        max_paths: 200
+      - fixture: aide_0.19_mixed.txt
+        rc: 7
+        expect: { status: changes, added: 2, removed: 1, changed: 2, total: 1159 }
+        expect_paths:
+          added: [/etc/cron.d/fi-test-backdoor, /root/.ssh/authorized_keys]
+          removed: [/etc/motd]
+          changed: [/etc/hosts, /usr/sbin/fi-test-binary]
+        max_paths: 200
+      - fixture: aide_0.19_mixed.txt
+        rc: 7
+        expect: { status: changes, added: 2, removed: 1, changed: 2, total: 1159 }
+        expect_paths:
+          added: [/etc/cron.d/fi-test-backdoor, /root/.ssh/authorized_keys]
+          removed: [/etc/motd]
+          changed: []
+        max_paths: 3
+      - fixture: aide_clean.txt
+        rc: 0
+        expect: { status: clean, added: 0, removed: 0, changed: 0, total: 1158 }
+        expect_paths: { added: [], removed: [], changed: [] }
+        max_paths: 200
+      - fixture: aide_error.txt
+        rc: 17
+        expect: { status: error, added: 0, removed: 0, changed: 0, total: 0 }
+        expect_paths: { added: [], removed: [], changed: [] }
+        max_paths: 200
+
+  tasks:
+    - name: Test | Run each case
+      ansible.builtin.include_tasks: tasks/report_case.yml
+      loop: "{{ __cases }}"
+      loop_control:
+        loop_var: case
+        label: "{{ case.fixture }} (max {{ case.max_paths }})"

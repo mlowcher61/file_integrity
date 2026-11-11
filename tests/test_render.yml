@@ -1,0 +1,54 @@
+---
+# Template render test (run in CI, no target hosts needed):
+#   ansible-playbook tests/test_render.yml
+#
+# Renders playbooks/templates/aide.conf.j2 with the project defaults (plus
+# the webservers example override) for both AIDE config syntaxes and asserts:
+#   * no duplicate watched paths
+#   * every referenced rule group is defined
+#   * only FIPS-appropriate hashes (sha512) are used
+#   * the required headers are present
+
+- name: Test | Render aide.conf.j2 and validate the result
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: file_integrity_defaults
+  vars:
+    aide_config_template_src: "{{ playbook_dir }}/../playbooks/templates/aide.conf.j2"
+    __scenarios:
+      - name: defaults-aide-0.16
+        aide_version: "0.16"
+        extra_vars_file: ""
+      - name: defaults-aide-0.18
+        aide_version: "0.18.6"
+        extra_vars_file: ""
+      - name: webservers-aide-0.16
+        aide_version: "0.16"
+        extra_vars_file: "{{ playbook_dir }}/../inventory/group_vars/webservers/aide.yml"
+      - name: webservers-aide-0.18
+        aide_version: "0.18.6"
+        extra_vars_file: "{{ playbook_dir }}/../inventory/group_vars/webservers/aide.yml"
+      - name: duplicate-override
+        aide_version: "0.16"
+        extra_vars_file: "{{ playbook_dir }}/fixtures/duplicate_override.yml"
+
+  tasks:
+    - name: Test | Create a scratch directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: aide-render-test.
+      register: __tmp
+
+    - name: Test | Render and validate each scenario
+      ansible.builtin.include_tasks: tasks/render_scenario.yml
+      loop: "{{ __scenarios }}"
+      loop_control:
+        loop_var: scenario
+        label: "{{ scenario.name }}"
+
+    - name: Test | Remove the scratch directory
+      ansible.builtin.file:
+        path: "{{ __tmp.path }}"
+        state: absent

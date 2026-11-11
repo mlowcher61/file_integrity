@@ -1,0 +1,50 @@
+Start timestamp: 2026-11-11 20:18:01 +0000 (AIDE 0.19.2)
+AIDE found differences between database and filesystem!!
+
+Summary:
+  Total number of entries:	1156
+  Added entries:		0
+  Removed entries:		0
+  Changed entries:		1
+
+---------------------------------------------------
+Changed entries:
+---------------------------------------------------
+
+f   ...    .H...  : /etc/aide.conf
+
+---------------------------------------------------
+Detailed information about changes:
+---------------------------------------------------
+
+File: /etc/aide.conf
+ SHA512    : t/1V5Qit1jslB3do+8NLr3jbhWB8xovs | 063sLJOOMvSy5EIRTfw7mIRZYK5sh+35
+             JXEuSYADTVTOXLrdlfLK+7kZ9dOZ8NOK | 316zkJfjjDCTfDESBipdDYQZG0r1w43j
+             +0XFJrgsg4Zl3krdSLog/Q==         | itVtSmNGDFTkG20SQaDuAA==
+
+
+---------------------------------------------------
+The attributes of the (uncompressed) database(s):
+---------------------------------------------------
+
+/var/lib/aide/aide.db.gz
+ SHA256    : 69Zzo8UV6ipSrVfL0W2EoaXUJvlBhlfQ
+             sADslcpDq0c=
+ SHA512    : kXxrG237rNbYE3oRmNZc/+VhVxbr/9lB
+             nqmZFKKf1ix6MsXvkGtrLKD4hwaFr4L8
+             8BFoMoGj2p71Giq1OgMoZw==
+ STRIBOG256: Qc7ho59SgHvdpOsIQs8oJiGiYOz5moI9
+             dw1uY5ivE7o=
+ STRIBOG512: tViM7oX6kBLs5O9xHLwcRu51H1WOlRaw
+             ZuTCvfnRsJRBbbBqYmhi4M2dQqqpiE9K
+             DBw7omJnerVUxnQwGBQ1qQ==
+ SHA512/256: Nidln2qoobfFxk5frlu+XxC6VE38tbsz
+             XcZnJIKKOzM=
+ SHA3-256  : zFjORuy5HhxSd1dbEQczH6yvQnFBbWzp
+             0C1WdXUaio4=
+ SHA3-512  : QEFrFd9/OlHz7/CkMrSGCdEonCIONTq7
+             F0KBdAS8ElkaZWCAgXEsw5br3BKL9V5g
+             6/S8bU20HgFPjQjve1Rrug==
+
+
+End timestamp: 2026-11-11 20:18:01 +0000 (run time: 0m 0s)
