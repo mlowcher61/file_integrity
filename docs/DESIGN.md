@@ -17,7 +17,7 @@ This document explains how file_integrity is put together and why.
 
 | Component | Responsibility |
 |---|---|
-| `redhat.rhel_system_roles.aide` | Installs `aide`, templates `/etc/aide.conf`, runs `aide --init`, fetches the new DB to the controller, manages the cron entry. |
+| `redhat.rhel_system_roles.aide` | Installs `aide`, templates `/etc/aide.conf`, runs `aide --init`, fetches the new DB to the controller, and removes any AIDE cron entry (`aide_cron_check: false`). |
 | `playbooks/*.yml` | Orchestration: pre-flight, baseline pull/verify/restore, check, update, report, publish. |
 | `playbooks/tasks/baseline_*.yml` | Backend-neutral baseline handling (see §5). |
 | `playbooks/tasks/backends/git/` | Git implementation of the baseline store. |
@@ -127,22 +127,30 @@ implemented). The backend-neutral task files define the contract:
 
 No playbook changes are required.
 
-## 6. Scheduling: AAP vs cron
+## 6. Scheduling: AAP only
 
-| | `aide_schedule_mode: aap` (default) | `aide_schedule_mode: cron` |
+Checks are scheduled **only** by the AAP scheduler (schedule
+*AIDE - Daily Check* → job template *AIDE - Check*, daily at 03:00
+America/Los_Angeles). This is deliberate:
+
+| | AAP scheduler (used) | On-host cron (not used) |
 |---|---|---|
-| Who runs the check | AAP schedule → **AIDE - Check** | `/etc/crontab` on each host (`aide --check`) |
-| Reference DB | **Off-host** baseline, sha256-verified, restored before each run | **On-host** `/var/lib/aide/aide.db.gz` |
-| Tamper resistance | Strong: host cannot alter the reference | Weak: root on the host can replace the DB |
-| Results | AAP job output, `set_stats`, notifications, EDA | Local `/var/log/aide/aide.log` and cron mail |
-| Works when AAP is down | No | Yes |
+| Reference DB | **Off-host** baseline, sha256-verified, restored before each run | On-host `/var/lib/aide/aide.db.gz`, which root on the host can replace |
+| Tamper resistance | Strong | Weak: a compromised host can hide its own changes |
+| Results | AAP job output, `set_stats`, notifications, workflows, EDA | Local log file and cron mail, easy to suppress |
+| Central visibility and audit | Yes: one place for every host, with job history and RBAC | No |
+| Config drift detection | Yes (re-renders `aide.conf` every run) | No |
 
-In `aap` mode the playbooks pass `aide_cron_check: false`, which **removes**
-the role's cron entry. In `cron` mode they pass `aide_cron_check: true`, and
-the role adds `<aide_cron_interval> root /usr/sbin/aide --check`. Deploy and
-Rebaseline always install the current trusted baseline on the host, so cron
-checks compare against the most recent approved state. Treat cron mode as a
-supplement, not a replacement, for scheduled AAP checks.
+Every playbook passes `aide_cron_check: false` to the system role. That
+**removes** any `/etc/crontab` line matching `... root /usr/sbin/aide --check`
+(the format the role uses), so hosts previously scheduled through the role are
+cleaned up on the next Deploy, Check or Rebaseline. AIDE jobs created some
+other way (for example `/etc/cron.daily/aide` or a systemd timer) are not
+touched; remove them with your normal configuration management.
+
+The trade-off is that no checks run while AAP is unavailable. Monitor the
+schedule (for example, alert when *AIDE - Check* has not succeeded for more
+than 24 hours) rather than adding cron as a fallback.
 
 ## 7. Role behaviour verified against the source
 
@@ -150,23 +158,25 @@ The spec asked for the role's variables to be verified against its README and
 `defaults/main.yml` (collection `redhat.rhel_system_roles` 1.120.5). Variable
 names match the spec: `aide_config_template`, `aide_db_fetch_dir`, `aide_init`,
 `aide_fetch_db`, `aide_check`, `aide_update`, `aide_cron_check`,
-`aide_cron_interval`. Reading `tasks/main.yml` showed behaviour that drove
-these decisions:
+`aide_cron_interval` (unused here, because scheduling is AAP-only).
+Reading `tasks/main.yml` showed behaviour that drove these decisions:
 
 | Finding in the role | Consequence / decision |
 |---|---|
 | `aide_check: true` runs `aide --check` **without registering output**. AIDE exits non-zero (1/2/4 bit flags) on any difference, so the task simply fails and the output cannot be parsed. | The check playbook runs `aide --check` itself with `failed_when: false`, parses the output in `tasks/report.yml`, and fails hosts at the very end (§9). The role still installs and configures. |
 | `aide_update: true` uses `failed_when: "...NO differences..." not in stdout`, so it **fails whenever there are differences**, which is exactly the rebaseline case. | The rebaseline playbook runs `aide --update` itself (rc 0-7 = success, 14+ = error) and fetches `aide.db.new.gz`. |
 | "Push baseline from controller before check" exists only as `aide_check: true` + `aide_fetch_db: true`. That combination also runs the fetch block, which fails because `aide.db.new.gz` does not exist during a check. | Baselines are restored with our own `copy` + on-host sha256 verification (`tasks/baseline_restore.yml`). |
-| `aide_init` + `aide_fetch_db` fetch the new DB to `<aide_db_fetch_dir>/<host>/var/lib/aide/aide.db.new.gz` and **delete it from the host without installing it** as `aide.db.gz`. | Deploy copies the fetched DB back to the host as `aide.db.gz` (needed for cron mode and so the host matches the published baseline). |
+| `aide_init` + `aide_fetch_db` fetch the new DB to `<aide_db_fetch_dir>/<host>/var/lib/aide/aide.db.new.gz` and **delete it from the host without installing it** as `aide.db.gz`. | Deploy copies the fetched DB back to the host as `aide.db.gz`, so the host matches the published baseline. |
 | DB paths are hardcoded in the role's `vars/main.yml` (`/var/lib/aide/aide.db.gz`, `.new.gz`). | `aide_db_dir` must be `/var/lib/aide`; pre-flight asserts this. |
 | A custom template must start with `{{ ansible_managed \| comment }}` and `system_role:aide`. The role exports `aide_version` for version-specific syntax. | `aide.conf.j2` includes both headers plus the project header, and switches between `database=`/`verbose=` (AIDE < 0.17) and `database_in=`/`log_level=`/`report_level=` (AIDE ≥ 0.17). |
-| The role's `aide_cron_interval` default (`0 12 * * *`) wins over a value in another role's defaults. | The defaults role does not define `aide_cron_interval`; set it in inventory or AAP to change it. |
 
 ## 8. Other decisions and deviations from the spec
 
 | Spec said | Implemented | Why |
 |---|---|---|
+| §5.4: support `aide_schedule_mode: aap \| cron` | **AAP scheduling only.** No `aide_schedule_mode`; `aide_cron_check: false` is always passed, which removes any AIDE cron entry | Decided by the solution owner (v0.2.0). Cron checks use the on-host database and bypass the off-host trust model; see §6. |
+| §6: `aap/README.md` explains running `configure_aap.yml` against a controller from a workstation | Configuration is applied **from AAP** by the self-managed *AIDE - Configure AAP* job template; `aap/README.md` is a step-by-step UI guide | The solution targets AAP, not ansible-core on a workstation. The baseline token comes from an encrypted survey; API access comes from a *Red Hat Ansible Automation Platform* credential (`AAP_*` or `CONTROLLER_*` variables). |
+| `infra.aap_configuration` in a separate `aap/requirements.yml` | In `collections/requirements.yml` | AAP only installs `collections/requirements.yml` at project sync, so the config-as-code job needs its collections there. |
 | Remote `gitlab.com/mlowcher/aide-fim` or `github.com/mlowcher61/aide-fim` | `github.com/mlowcher61/file_integrity` (public) and `github.com/mlowcher61/file_integrity_baselines` (private) | Chosen by the repository owner. The name `file_integrity` is used for the AAP project and the config header. |
 | Rule group `CONTENT_EX` | `CONTENTEX` | AIDE 0.19 (shipped in RHEL 9.8+ and 10) deprecates non-alphanumeric group names and warns on every run. Pre-flight enforces alphanumeric names so a future AIDE release cannot break configs. |
 | Global defaults in `inventory/group_vars/all/aide.yml` | Defaults in `playbooks/roles/file_integrity_defaults/defaults/main.yml`; `inventory/group_vars/all/aide.yml` holds local overrides | In AAP the inventory is a separate object, so `group_vars/` next to a project inventory file is **not loaded** unless that inventory is sourced from the project. A playbook-adjacent `group_vars/all` would load, but it would **override** group variables set in an AAP inventory (variable precedence 5 vs 3). Role defaults are always loaded at the lowest precedence. |
@@ -175,7 +185,7 @@ these decisions:
 | `.github/workflows/lint.yml` runs linters | Also runs a report parser test with real AIDE 0.16 and 0.19 output, on ansible-core 2.16 and latest | Output formats differ between AIDE versions (for example, `Number of entries` vs `Total number of entries`), and ansible-core 2.21 changed `regex_search` behaviour. |
 | `aap/vars/` files listed | Added `aap/vars/00_site.yml` (placeholders) and `aap/vars/execution_environments.yml` | Placeholders are "at the top of aap/vars/". The EE object ensures `ee-supported-rhel9` exists under that name (it is not a default AAP EE name). |
 | Config validate makes no changes | Renders to a temp file on the host (removed in `always`) and compares with the live file in check mode | The job may report `changed=1` for the comparison task. That means "Deploy would update `/etc/aide.conf`"; nothing is modified. |
-| `ansible.platform` preferred over `ansible.controller` | `aap/requirements.yml` lists both | `infra.aap_configuration` (validated content) uses `ansible.platform` for gateway objects and `ansible.controller` for controller objects (job templates, workflows, schedules), which `ansible.platform` does not manage. |
+| `ansible.platform` preferred over `ansible.controller` | `collections/requirements.yml` lists both | `infra.aap_configuration` (validated content) uses `ansible.platform` for gateway objects and `ansible.controller` for controller objects (job templates, workflows, schedules), which `ansible.platform` does not manage. |
 
 ## 9. Check exit behaviour
 

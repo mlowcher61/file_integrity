@@ -24,12 +24,12 @@ is no custom AIDE role.
 - [How it works](#how-it-works)
 - [What you get](#what-you-get)
 - [Prerequisites](#prerequisites)
-- [Quick start (local, with ansible-navigator)](#quick-start-local-with-ansible-navigator)
-- [Quick start (Ansible Automation Platform)](#quick-start-ansible-automation-platform)
+- [Deploy to AAP (from AAP)](#deploy-to-aap-from-aap)
 - [Day-to-day use](#day-to-day-use)
 - [Variable reference](#variable-reference)
 - [Repository layout](#repository-layout)
 - [Testing and CI](#testing-and-ci)
+- [Testing outside AAP (optional)](#testing-outside-aap-optional)
 - [Further documentation](#further-documentation)
 
 ---
@@ -78,9 +78,12 @@ flowchart LR
 - **Readable reports.** Each check prints a per-host summary in the job
   output and publishes structured results with `set_stats`, so workflows or
   Event-Driven Ansible can act on them.
-- **AAP configuration as code** (`aap/`). One playbook creates the
-  credential type, credential, execution environment, project, 4 job
-  templates, the approval workflow and the daily schedule.
+- **AAP configuration as code** (`aap/`), run **from AAP** by the
+  *AIDE - Configure AAP* job template. It creates the credential type,
+  credential, execution environment, project, 4 job templates, the approval
+  workflow and the daily schedule, and keeps its own job template in sync.
+- **AAP-only scheduling.** The AAP scheduler runs the daily check. No cron
+  jobs are created on hosts, and any existing AIDE cron entry is removed.
 - **CI** (GitHub Actions). Runs yamllint, ansible-lint (production profile),
   syntax checks, a template render test and a report parser test.
 
@@ -94,62 +97,33 @@ flowchart LR
 | A Machine credential (SSH user with sudo) | Lets AAP connect to the hosts and become root. |
 | A **private** Git repository for baselines, with at least one commit (e.g. a README) | Off-host, tamper-evident baseline store. Default: `github.com/mlowcher61/file_integrity_baselines`. |
 | A token with **read/write** access to that repository | GitHub fine-grained token (Contents: Read and write) or GitLab project access token (`write_repository`). It is stored only in an AAP credential. |
+| Red Hat Automation Hub access on the AAP organization | AAP installs the certified and validated collections below when the project syncs. |
 
 Collections (`collections/requirements.yml`, installed by AAP at project sync):
 
 - `redhat.rhel_system_roles` (certified; already in `ee-supported-rhel9`)
 - `ansible.posix` (certified)
 - `community.general` (listed for parity; not currently used by the playbooks)
+- `infra.aap_configuration` (validated), `ansible.platform` and `ansible.controller` (certified): used only by the *AIDE - Configure AAP* job template
 
-## Quick start (local, with ansible-navigator)
+## Deploy to AAP (from AAP)
 
-Use this to try the project from a workstation, using the same execution
-environment as AAP.
+Everything is set up from the AAP web UI. You create three objects by hand,
+and a config-as-code job template creates the rest. The full walkthrough,
+with every field to fill in, is in **[aap/README.md](aap/README.md)**:
 
-```bash
-git clone https://github.com/mlowcher61/file_integrity.git
-cd file_integrity
+1. Give your organization Automation Hub access (Galaxy credentials).
+2. Create a **Red Hat Ansible Automation Platform** credential, so AAP can configure itself.
+3. Create the **`file_integrity`** project from this repository.
+4. Create the **`AIDE - Configure AAP`** job template (`aap/configure_aap.yml`),
+   with four extra variables (organization, inventory, machine credential, AAP
+   credential) and a password survey for the baseline repository token.
+5. Launch it. It creates the credential type and credential, the EE, the
+   job templates, the approval workflow and the daily schedule.
+6. Launch **AIDE - Validate Config**, **AIDE - Deploy**, then **AIDE - Check**.
 
-# 1. Log in to the Red Hat registry so the EE image can be pulled
-podman login registry.redhat.io
-
-# 2. Describe your hosts. Edit inventory/example.yml (group "aide") and,
-#    if needed, inventory/group_vars/all/aide.yml (baseline repo URL).
-
-# 3. Provide the baseline repository token. Use an environment variable,
-#    never a file in git.
-export AIDE_BASELINE_GIT_TOKEN='github_pat_...'
-
-# 4. Run the playbooks (ansible-navigator.yml selects ee-supported-rhel9)
-ansible-navigator run playbooks/aide_config_validate.yml -i inventory/example.yml
-ansible-navigator run playbooks/aide_deploy.yml          -i inventory/example.yml
-ansible-navigator run playbooks/aide_check.yml           -i inventory/example.yml
-ansible-navigator run playbooks/aide_rebaseline.yml      -i inventory/example.yml \
-    -e aide_change_ref=CHG0012345 --limit web01.example.com
-```
-
-Add `-u <user> -k -K` or your usual SSH options if needed.
-
-## Quick start (Ansible Automation Platform)
-
-1. **Create the baseline repository.** Make it private, add a README so it
-   has a first commit, and create a read/write token for it.
-2. **Configure AAP with config as code.** Full details are in
-   [aap/README.md](aap/README.md).
-
-   ```bash
-   # Edit the three placeholders at the top of aap/vars/00_site.yml:
-   #   aap_fim_organization, aap_fim_inventory, aap_fim_machine_credential
-   ansible-galaxy collection install -r aap/requirements.yml -p aap/collections
-   export AAP_HOSTNAME=https://aap.example.com
-   export AAP_TOKEN='...'                       # or AAP_USERNAME / AAP_PASSWORD
-   export AIDE_BASELINE_GIT_TOKEN='github_pat_...'
-   ANSIBLE_COLLECTIONS_PATH=aap/collections ansible-playbook aap/configure_aap.yml
-   ```
-
-3. Make sure your RHEL hosts are in an inventory group called **`aide`**.
-4. Launch **AIDE - Validate Config**, then **AIDE - Deploy**.
-5. From then on, **AIDE - Check** runs every day at 03:00 (America/Los_Angeles).
+From then on, **AIDE - Check** runs every day at 03:00 (America/Los_Angeles)
+from the AAP scheduler. No cron jobs are used on the hosts.
 
 ## Day-to-day use
 
@@ -184,8 +158,6 @@ in job template extra vars, or in `inventory/group_vars/` for local runs.
 | `aide_exclude_paths` | `/etc/mtab`, `/etc/.*~`, `/var/log/journal`, `/var/lib/aide`, `/var/log/aide` | Paths AIDE ignores. |
 | `aide_exclude_paths_extra` | `[]` | Group- or host-level additional exclusions. |
 | `aide_forbidden_hashes` | md5, sha1, rmd160, tiger, crc32, crc32b, haval, gost, whirlpool | Hashes that pre-flight rejects. |
-| `aide_schedule_mode` | `aap` | `aap`: AAP schedule, role cron removed. `cron`: role adds a cron check against the on-host DB (weaker; see DESIGN). |
-| `aide_cron_interval` | `0 12 * * *` (role default) | Cron schedule when `aide_schedule_mode: cron`. |
 | `aide_fail_on_change` | `true` | Fail hosts with any added, removed or changed entry, after all hosts are reported. |
 | `aide_report_max_paths` | `200` | Maximum paths listed per host in output and `set_stats`. |
 | `aide_command_timeout` | `3600` | Seconds an `aide` run may take. |
@@ -247,16 +219,33 @@ ansible-playbook tests/test_report.yml     # parses real AIDE 0.16 / 0.19 output
 on every commit.
 
 The playbooks were tested end to end (deploy, idempotent re-deploy, check,
-tamper detection, hash-mismatch and missing-baseline failures, rebaseline,
-cron mode) against RHEL-compatible Rocky Linux 8 (AIDE 0.16), 9 and 10
+tamper detection, hash-mismatch and missing-baseline failures, rebaseline)
+against RHEL-compatible Rocky Linux 8 (AIDE 0.16), 9 and 10
 (AIDE 0.19) with ansible-core 2.16 and 2.21.
+
+## Testing outside AAP (optional)
+
+The solution is designed to run in AAP. For development or a quick lab test,
+you can run the playbooks from a workstation with `ansible-navigator`, using the
+same `ee-supported-rhel9` execution environment (`ansible-navigator.yml`):
+
+```bash
+podman login registry.redhat.io
+export AIDE_BASELINE_GIT_TOKEN='github_pat_...'      # never put it in a file in git
+# Edit inventory/example.yml (group "aide") and inventory/group_vars/ as needed
+ansible-navigator run playbooks/aide_config_validate.yml -i inventory/example.yml
+ansible-navigator run playbooks/aide_deploy.yml          -i inventory/example.yml
+ansible-navigator run playbooks/aide_check.yml           -i inventory/example.yml
+```
+
+Scheduling, approvals, surveys and notifications only exist in AAP.
 
 ## Further documentation
 
 - [docs/DESIGN.md](docs/DESIGN.md): architecture, baseline trust model, decisions, deviations from the spec
 - [docs/OPERATIONS.md](docs/OPERATIONS.md): runbooks (deploy, daily check, triage, rebaseline, add host, recovery)
 - [docs/WATCHLIST.md](docs/WATCHLIST.md): adding and removing paths, rule groups, common exclusions
-- [aap/README.md](aap/README.md): configuring AAP with `configure_aap.yml`
+- [aap/README.md](aap/README.md): step-by-step deployment to AAP, from AAP
 - [CHANGELOG.md](CHANGELOG.md)
 
 ## License

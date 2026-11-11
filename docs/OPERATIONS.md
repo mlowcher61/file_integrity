@@ -1,8 +1,8 @@
 # Operations runbook
 
-These runbooks assume AAP has been configured with `aap/configure_aap.yml`
-(see [aap/README.md](../aap/README.md)). Command-line equivalents are given for
-local runs with `ansible-navigator`.
+These runbooks assume AAP has been set up by following
+[aap/README.md](../aap/README.md). Everything is done in the AAP UI; the
+occasional `ansible-navigator` command is only for lab testing outside AAP.
 
 | Job template / workflow | Playbook |
 |---|---|
@@ -20,8 +20,8 @@ local runs with `ansible-navigator`.
 
 - [ ] RHEL 8, 9 or 10 hosts are in the AAP inventory group `aide`.
 - [ ] The private baseline repository exists and has at least one commit.
-- [ ] `aap/configure_aap.yml` has run (credential type, credential, project,
-      job templates, workflow and schedule exist).
+- [ ] **AIDE - Configure AAP** has run successfully (credential type,
+      credential, project, job templates, workflow and schedule exist).
 - [ ] The hosts are patched and in a known-good state. **The first baseline
       is trusted by definition**, so deploy right after a build or a clean
       patch cycle, not on a system you suspect is compromised.
@@ -217,6 +217,7 @@ variable `aide_force_init: true`. The commit message starts with
 | `AIDE is not installed on <host>` | Validate/Check/Rebaseline ran before Deploy | Run AIDE - Deploy. |
 | `Could not clone the baseline repository` | Wrong URL or branch, empty repo, or a token without access | Check `aide_baseline_repo_url`, `aide_baseline_repo_branch`, that the repo has a commit, and that the credential token has read/write. |
 | `the AIDE_BASELINE_GIT_TOKEN environment variable must be provided` | The baseline credential is not attached to the job template | Attach *file_integrity baseline repo token* to the template. |
+| Baseline token expired or revoked | Clone or push fails with an authentication error | Launch **AIDE - Configure AAP** and enter a new token in the survey. |
 | `Pushing baselines ... FAILED` | Token lacks write access, branch protection, or another job pushed at the same time | Fix permissions; for concurrent pushes, simply re-run. The new baseline was **not** saved. |
 | `These rules are used in the watch list but not defined in aide_rule_groups` | Typo in a `rule:` value | Fix the variable; run Validate. |
 | `Rule group names may contain only letters and digits` | e.g. `CONTENT_EX` | Rename the group (AIDE 0.19 deprecates other characters). |
