@@ -1,0 +1,9 @@
+---
+controller_execution_environments: >-
+  {{ [{
+        'name': aap_fim_execution_environment,
+        'description': 'Red Hat supported EE (RHEL 9). Contains redhat.rhel_system_roles.',
+        'image': aap_fim_execution_environment_image,
+        'pull': 'missing',
+        'credential': aap_fim_execution_environment_registry_credential
+      }] if aap_fim_create_execution_environment | bool else [] }}

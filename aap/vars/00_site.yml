@@ -1,0 +1,54 @@
+---
+# =============================================================================
+# SITE SETTINGS: EDIT THIS FILE BEFORE RUNNING configure_aap.yml
+#
+# Values that start with REPLACE_ME are placeholders. configure_aap.yml
+# refuses to run until every one of them is replaced.
+# =============================================================================
+
+# Existing AAP organization that will own every object created here.
+aap_fim_organization: REPLACE_ME_ORGANIZATION
+
+# Existing AAP inventory that contains your RHEL hosts. The playbooks target
+# the inventory group `aide` by default (see aap_fim_target_hosts below).
+aap_fim_inventory: REPLACE_ME_INVENTORY
+
+# Existing Machine credential (SSH user with sudo) for those hosts.
+aap_fim_machine_credential: REPLACE_ME_MACHINE_CREDENTIAL
+
+# -----------------------------------------------------------------------------
+# The settings below have working defaults; change them only if needed.
+# -----------------------------------------------------------------------------
+
+# Inventory group (or pattern) the job templates run against.
+aap_fim_target_hosts: aide
+
+# This repository.
+aap_fim_project_name: file_integrity
+aap_fim_project_url: https://github.com/mlowcher61/file_integrity.git
+aap_fim_project_branch: main
+
+# Private repository that stores the known-good AIDE baselines.
+aap_fim_baseline_repo_url: https://github.com/mlowcher61/file_integrity_baselines.git
+aap_fim_baseline_repo_branch: main
+
+# Name of the AAP credential that holds the baseline repository token.
+# The token value is read from the AIDE_BASELINE_GIT_TOKEN environment
+# variable when configure_aap.yml runs. It is never stored in this repo.
+aap_fim_baseline_credential: file_integrity baseline repo token
+
+# Execution environment. ee-supported-rhel9 already contains
+# redhat.rhel_system_roles. Set aap_fim_create_execution_environment to false
+# if an EE with this name already exists in your controller.
+aap_fim_execution_environment: ee-supported-rhel9
+aap_fim_create_execution_environment: true
+aap_fim_execution_environment_image: registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9:latest
+# Registry credential used to pull the image. AAP creates this one at install.
+aap_fim_execution_environment_registry_credential: Default Execution Environment Registry Credential
+
+# Daily check schedule.
+aap_fim_schedule_timezone: America/Los_Angeles
+aap_fim_schedule_start: "20261112T030000"   # first run (local time), YYYYMMDDTHHMMSS
+
+# How long an approver has to approve a re-baseline (seconds; 0 = no limit).
+aap_fim_approval_timeout: 86400

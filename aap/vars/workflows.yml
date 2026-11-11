@@ -1,0 +1,59 @@
+---
+# Validate Config -> Approval -> Rebaseline -> Check
+# The workflow survey collects the change reference once; workflow extra vars
+# are passed to every node. The Limit prompt is passed to each node as well.
+controller_workflows:
+  - name: AIDE - Change Rebaseline
+    description: >-
+      Approved re-baseline after a change: validate config, wait for approval,
+      re-baseline, then confirm a clean check.
+    organization: "{{ aap_fim_organization }}"
+    inventory: "{{ aap_fim_inventory }}"
+    ask_limit_on_launch: true
+    allow_simultaneous: false
+    survey_enabled: true
+    survey_spec:
+      name: AIDE change re-baseline
+      description: Approved change details
+      spec:
+        - question_name: Change reference
+          question_description: Approved change number (for example CHG0012345).
+          required: true
+          type: text
+          variable: aide_change_ref
+          min: 3
+          max: 64
+          default: ""
+        - question_name: Target hosts
+          question_description: Inventory group or host pattern (use Limit to narrow further).
+          required: true
+          type: text
+          variable: aide_target_hosts
+          min: 1
+          max: 1024
+          default: "{{ aap_fim_target_hosts }}"
+    destroy_current_nodes: false
+    simplified_workflow_nodes:
+      - identifier: validate_config
+        unified_job_template: AIDE - Validate Config
+        lookup_organization: "{{ aap_fim_organization }}"
+        success_nodes:
+          - approve_rebaseline
+      - identifier: approve_rebaseline
+        approval_node:
+          name: Approve AIDE re-baseline
+          description: >-
+            Confirm the change reference is approved and the Validate Config
+            output looks correct. Approving accepts the current state of the
+            hosts as the new known-good baseline.
+          timeout: "{{ aap_fim_approval_timeout }}"
+        success_nodes:
+          - rebaseline
+      - identifier: rebaseline
+        unified_job_template: AIDE - Rebaseline
+        lookup_organization: "{{ aap_fim_organization }}"
+        success_nodes:
+          - confirm_clean
+      - identifier: confirm_clean
+        unified_job_template: AIDE - Check
+        lookup_organization: "{{ aap_fim_organization }}"

@@ -1,0 +1,8 @@
+---
+controller_schedules:
+  - name: AIDE - Daily Check
+    description: Run AIDE - Check every day at 03:00 {{ aap_fim_schedule_timezone }}.
+    unified_job_template: AIDE - Check
+    organization: "{{ aap_fim_organization }}"
+    rrule: "DTSTART;TZID={{ aap_fim_schedule_timezone }}:{{ aap_fim_schedule_start }} RRULE:FREQ=DAILY;INTERVAL=1"
+    enabled: true

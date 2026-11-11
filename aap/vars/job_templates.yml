@@ -1,0 +1,95 @@
+---
+# Four job templates, all using ee-supported-rhel9, the Machine credential and
+# the baseline Git token credential.
+controller_templates:
+  - name: AIDE - Deploy
+    description: Install AIDE, render aide.conf, create and publish the initial baseline (idempotent).
+    organization: "{{ aap_fim_organization }}"
+    project: "{{ aap_fim_project_name }}"
+    playbook: playbooks/aide_deploy.yml
+    inventory: "{{ aap_fim_inventory }}"
+    execution_environment: "{{ aap_fim_execution_environment }}"
+    credentials:
+      - "{{ aap_fim_machine_credential }}"
+      - "{{ aap_fim_baseline_credential }}"
+    ask_limit_on_launch: true
+    ask_variables_on_launch: true
+    allow_simultaneous: false
+    extra_vars:
+      aide_target_hosts: "{{ aap_fim_target_hosts }}"
+      aide_baseline_repo_url: "{{ aap_fim_baseline_repo_url }}"
+      aide_baseline_repo_branch: "{{ aap_fim_baseline_repo_branch }}"
+      aide_force_init: false
+
+  - name: AIDE - Check
+    description: Restore the off-host baseline, run aide --check and report. Never changes the baseline.
+    organization: "{{ aap_fim_organization }}"
+    project: "{{ aap_fim_project_name }}"
+    playbook: playbooks/aide_check.yml
+    inventory: "{{ aap_fim_inventory }}"
+    execution_environment: "{{ aap_fim_execution_environment }}"
+    credentials:
+      - "{{ aap_fim_machine_credential }}"
+      - "{{ aap_fim_baseline_credential }}"
+    ask_limit_on_launch: true
+    allow_simultaneous: false
+    extra_vars:
+      aide_target_hosts: "{{ aap_fim_target_hosts }}"
+      aide_baseline_repo_url: "{{ aap_fim_baseline_repo_url }}"
+      aide_baseline_repo_branch: "{{ aap_fim_baseline_repo_branch }}"
+
+  - name: AIDE - Rebaseline
+    description: Accept the current state as the new baseline after an APPROVED change. Requires a change reference.
+    organization: "{{ aap_fim_organization }}"
+    project: "{{ aap_fim_project_name }}"
+    playbook: playbooks/aide_rebaseline.yml
+    inventory: "{{ aap_fim_inventory }}"
+    execution_environment: "{{ aap_fim_execution_environment }}"
+    credentials:
+      - "{{ aap_fim_machine_credential }}"
+      - "{{ aap_fim_baseline_credential }}"
+    ask_limit_on_launch: true
+    allow_simultaneous: false
+    extra_vars:
+      aide_baseline_repo_url: "{{ aap_fim_baseline_repo_url }}"
+      aide_baseline_repo_branch: "{{ aap_fim_baseline_repo_branch }}"
+    survey_enabled: true
+    survey_spec:
+      name: AIDE re-baseline
+      description: Approved change details
+      spec:
+        - question_name: Change reference
+          question_description: >-
+            Approved change number (for example CHG0012345). Recorded in the
+            baseline metadata and the commit message.
+          required: true
+          type: text
+          variable: aide_change_ref
+          min: 3
+          max: 64
+          default: ""
+        - question_name: Target hosts
+          question_description: >-
+            Inventory group or host pattern to re-baseline. Use the Limit
+            prompt to narrow this further (for example a single host).
+          required: true
+          type: text
+          variable: aide_target_hosts
+          min: 1
+          max: 1024
+          default: "{{ aap_fim_target_hosts }}"
+
+  - name: AIDE - Validate Config
+    description: Render aide.conf to a temp file and run aide --config-check. Makes no changes.
+    organization: "{{ aap_fim_organization }}"
+    project: "{{ aap_fim_project_name }}"
+    playbook: playbooks/aide_config_validate.yml
+    inventory: "{{ aap_fim_inventory }}"
+    execution_environment: "{{ aap_fim_execution_environment }}"
+    credentials:
+      - "{{ aap_fim_machine_credential }}"
+      - "{{ aap_fim_baseline_credential }}"
+    ask_limit_on_launch: true
+    allow_simultaneous: false
+    extra_vars:
+      aide_target_hosts: "{{ aap_fim_target_hosts }}"

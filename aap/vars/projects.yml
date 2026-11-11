@@ -1,0 +1,13 @@
+---
+controller_projects:
+  - name: "{{ aap_fim_project_name }}"
+    description: AIDE file integrity monitoring (github.com/mlowcher61/file_integrity)
+    organization: "{{ aap_fim_organization }}"
+    scm_type: git
+    scm_url: "{{ aap_fim_project_url }}"
+    scm_branch: "{{ aap_fim_project_branch }}"
+    scm_clean: true
+    scm_update_on_launch: true
+    default_environment: "{{ aap_fim_execution_environment }}"
+    wait: true
+    update_project: true
