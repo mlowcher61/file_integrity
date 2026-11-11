@@ -22,7 +22,6 @@ jobs:
         # "latest" catches upcoming behaviour changes early.
         ansible-core: ["2.16", "latest"]
     env:
-      ANSIBLE_COLLECTIONS_PATH: ./collections:./aap/collections
       ANSIBLE_FORCE_COLOR: "1"
     steps:
       - name: Check out the repository
@@ -46,9 +45,9 @@ jobs:
       - name: Install collections available on Ansible Galaxy
         run: |
           ansible-galaxy collection install ansible.posix community.general -p collections
-          # Only needed so configure_aap.yml can be syntax-checked; its
-          # certified dependencies are not needed for that.
-          ansible-galaxy collection install infra.aap_configuration --no-deps -p aap/collections
+          # Only needed so aap/configure_aap.yml can be syntax-checked; its
+          # certified dependencies (Automation Hub) are not needed for that.
+          ansible-galaxy collection install infra.aap_configuration --no-deps -p collections
 
       # Optional: add an AUTOMATION_HUB_TOKEN repository secret to also install
       # redhat.rhel_system_roles. The checks below pass without it because the
@@ -68,7 +67,8 @@ jobs:
           [galaxy_server.galaxy]
           url = https://galaxy.ansible.com/
           CFG
-          ANSIBLE_CONFIG=/tmp/ansible.cfg ansible-galaxy collection install redhat.rhel_system_roles -p collections
+          ANSIBLE_CONFIG=/tmp/ansible.cfg ansible-galaxy collection install \
+            redhat.rhel_system_roles ansible.platform ansible.controller -p collections
 
       - name: yamllint
         run: yamllint --strict .

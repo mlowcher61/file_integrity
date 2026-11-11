@@ -1,6 +1,5 @@
 # Collections installed locally by `ansible-galaxy collection install -r ...`
 collections/ansible_collections/
-aap/collections/
 
 # ansible-navigator / runner artifacts
 *.retry

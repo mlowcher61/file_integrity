@@ -1,14 +1,25 @@
 ---
-# Collections needed by the playbooks in this project.
-# AAP installs these automatically at project sync using the Galaxy /
-# Automation Hub credentials configured on your organization.
+# Collections installed by AAP when the file_integrity project syncs.
+# The organization's Galaxy credentials must include Red Hat Automation Hub
+# (console.redhat.com) so certified and validated content can be installed.
 collections:
+  # --- Used by the AIDE playbooks ---------------------------------------
   # Certified. Provides the `aide` system role.
   # NOTE: already included in the ee-supported-rhel9 execution environment;
-  # listed here so local runs and project syncs resolve the same content.
+  # listed here so project syncs resolve the same content.
   - name: redhat.rhel_system_roles
   # Certified.
   - name: ansible.posix
-  # Community. Listed per the project spec for parity with common
-  # tooling; the playbooks in this repo do not currently call any of its modules.
+  # Community. Listed per the project spec; the playbooks do not currently
+  # call any of its modules.
   - name: community.general
+
+  # --- Used by aap/configure_aap.yml (job template "AIDE - Configure AAP") ---
+  # Validated content: AAP configuration-as-code roles.
+  - name: infra.aap_configuration
+  # Certified: platform gateway modules.
+  - name: ansible.platform
+  # Certified: automation controller modules (credential types, projects,
+  # job templates, workflows, schedules). infra.aap_configuration uses these
+  # for controller objects, which ansible.platform does not manage.
+  - name: ansible.controller

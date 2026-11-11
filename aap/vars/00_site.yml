@@ -1,9 +1,13 @@
 ---
 # =============================================================================
-# SITE SETTINGS: EDIT THIS FILE BEFORE RUNNING configure_aap.yml
+# SITE SETTINGS
 #
-# Values that start with REPLACE_ME are placeholders. configure_aap.yml
-# refuses to run until every one of them is replaced.
+# When you run configure_aap.yml from AAP (job template "AIDE - Configure AAP",
+# see aap/README.md) you normally set the four REPLACE_ME values as EXTRA
+# VARIABLES on that job template, so you never have to edit or fork this repo.
+# Extra variables override the values in this file.
+#
+# configure_aap.yml refuses to run while any REPLACE_ME value remains.
 # =============================================================================
 
 # Existing AAP organization that will own every object created here.
@@ -16,11 +20,15 @@ aap_fim_inventory: REPLACE_ME_INVENTORY
 # Existing Machine credential (SSH user with sudo) for those hosts.
 aap_fim_machine_credential: REPLACE_ME_MACHINE_CREDENTIAL
 
+# Existing credential of type "Red Hat Ansible Automation Platform" that
+# "AIDE - Configure AAP" uses to talk to the AAP API.
+aap_fim_aap_credential: REPLACE_ME_AAP_CREDENTIAL
+
 # -----------------------------------------------------------------------------
 # The settings below have working defaults; change them only if needed.
 # -----------------------------------------------------------------------------
 
-# Inventory group (or pattern) the job templates run against.
+# Inventory group (or pattern) the AIDE job templates run against.
 aap_fim_target_hosts: aide
 
 # This repository.
@@ -33,8 +41,7 @@ aap_fim_baseline_repo_url: https://github.com/mlowcher61/file_integrity_baseline
 aap_fim_baseline_repo_branch: main
 
 # Name of the AAP credential that holds the baseline repository token.
-# The token value is read from the AIDE_BASELINE_GIT_TOKEN environment
-# variable when configure_aap.yml runs. It is never stored in this repo.
+# The token is entered in the (encrypted) survey of "AIDE - Configure AAP".
 aap_fim_baseline_credential: file_integrity baseline repo token
 
 # Execution environment. ee-supported-rhel9 already contains
@@ -45,6 +52,12 @@ aap_fim_create_execution_environment: true
 aap_fim_execution_environment_image: registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9:latest
 # Registry credential used to pull the image. AAP creates this one at install.
 aap_fim_execution_environment_registry_credential: Default Execution Environment Registry Credential
+
+# The "AIDE - Configure AAP" job template itself (managed as code after the
+# first run). It runs against localhost; AAP's built-in "Demo Inventory"
+# contains localhost.
+aap_fim_config_job_template: AIDE - Configure AAP
+aap_fim_config_inventory: Demo Inventory
 
 # Daily check schedule.
 aap_fim_schedule_timezone: America/Los_Angeles

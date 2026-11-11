@@ -1,6 +1,7 @@
 ---
-# Four job templates, all using ee-supported-rhel9, the Machine credential and
-# the baseline Git token credential.
+# Four AIDE job templates (ee-supported-rhel9, Machine credential + baseline
+# Git token credential) and the "AIDE - Configure AAP" job template that runs
+# this configuration as code from inside AAP.
 controller_templates:
   - name: AIDE - Deploy
     description: Install AIDE, render aide.conf, create and publish the initial baseline (idempotent).
@@ -93,3 +94,53 @@ controller_templates:
     allow_simultaneous: false
     extra_vars:
       aide_target_hosts: "{{ aap_fim_target_hosts }}"
+
+  # Config-as-code job template. You create it by hand once (aap/README.md,
+  # step 4); every run of configure_aap.yml then keeps it in line with this
+  # definition, so its extra variables and survey are managed as code too.
+  - name: "{{ aap_fim_config_job_template }}"
+    description: Apply the file_integrity AAP configuration as code (aap/configure_aap.yml).
+    organization: "{{ aap_fim_organization }}"
+    project: "{{ aap_fim_project_name }}"
+    playbook: aap/configure_aap.yml
+    inventory: "{{ aap_fim_config_inventory }}"
+    execution_environment: "{{ aap_fim_execution_environment }}"
+    credentials:
+      - "{{ aap_fim_aap_credential }}"
+    allow_simultaneous: false
+    # Every site setting is written back, so values entered as extra
+    # variables in the UI survive this job managing its own template.
+    extra_vars:
+      aap_fim_organization: "{{ aap_fim_organization }}"
+      aap_fim_inventory: "{{ aap_fim_inventory }}"
+      aap_fim_machine_credential: "{{ aap_fim_machine_credential }}"
+      aap_fim_aap_credential: "{{ aap_fim_aap_credential }}"
+      aap_fim_target_hosts: "{{ aap_fim_target_hosts }}"
+      aap_fim_project_url: "{{ aap_fim_project_url }}"
+      aap_fim_project_branch: "{{ aap_fim_project_branch }}"
+      aap_fim_baseline_repo_url: "{{ aap_fim_baseline_repo_url }}"
+      aap_fim_baseline_repo_branch: "{{ aap_fim_baseline_repo_branch }}"
+      aap_fim_execution_environment: "{{ aap_fim_execution_environment }}"
+      aap_fim_create_execution_environment: "{{ aap_fim_create_execution_environment }}"
+      aap_fim_execution_environment_image: "{{ aap_fim_execution_environment_image }}"
+      aap_fim_execution_environment_registry_credential: "{{ aap_fim_execution_environment_registry_credential }}"
+      aap_fim_config_inventory: "{{ aap_fim_config_inventory }}"
+      aap_fim_schedule_timezone: "{{ aap_fim_schedule_timezone }}"
+      aap_fim_schedule_start: "{{ aap_fim_schedule_start }}"
+      aap_fim_approval_timeout: "{{ aap_fim_approval_timeout }}"
+    survey_enabled: true
+    survey_spec:
+      name: AIDE - Configure AAP
+      description: Secrets for the file_integrity configuration
+      spec:
+        - question_name: Baseline repository token
+          question_description: >-
+            Read/write token for the baseline repository. Required on the
+            first run and to rotate the token; leave blank to keep the
+            existing token.
+          required: false
+          type: password
+          variable: aap_fim_baseline_token
+          min: 0
+          max: 1024
+          default: ""

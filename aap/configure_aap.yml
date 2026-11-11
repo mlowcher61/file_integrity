@@ -1,13 +1,13 @@
 ---
 # Configure Ansible Automation Platform for file_integrity (config as code).
 #
-#   ansible-galaxy collection install -r aap/requirements.yml -p aap/collections
-#   export AAP_HOSTNAME=https://aap.example.com
-#   export AAP_TOKEN=...            # or AAP_USERNAME + AAP_PASSWORD
-#   export AIDE_BASELINE_GIT_TOKEN=...
-#   ANSIBLE_COLLECTIONS_PATH=aap/collections ansible-playbook aap/configure_aap.yml
-#
-# See aap/README.md for details.
+# Run it FROM AAP with the job template "AIDE - Configure AAP". Step-by-step
+# instructions are in aap/README.md. That job template supplies:
+#   * AAP API connection details: injected by a credential of type
+#     "Red Hat Ansible Automation Platform" (AAP_* or CONTROLLER_* variables)
+#   * site settings: job template extra variables (see vars/00_site.yml)
+#   * the baseline repository token: encrypted survey answer
+#     (aap_fim_baseline_token)
 
 - name: Configure AAP objects for AIDE file integrity monitoring
   hosts: localhost
@@ -23,48 +23,56 @@
     - vars/workflows.yml
     - vars/schedules.yml
   vars:
-    aap_hostname: "{{ lookup('ansible.builtin.env', 'AAP_HOSTNAME') }}"
-    aap_token: "{{ lookup('ansible.builtin.env', 'AAP_TOKEN') }}"
-    aap_username: "{{ lookup('ansible.builtin.env', 'AAP_USERNAME') }}"
-    aap_password: "{{ lookup('ansible.builtin.env', 'AAP_PASSWORD') }}"
-    aap_validate_certs: "{{ lookup('ansible.builtin.env', 'AAP_VALIDATE_CERTS') | default('true', true) | bool }}"
+    # Accept both naming schemes injected by the AAP credential type.
+    aap_hostname: "{{ lookup('ansible.builtin.env', 'AAP_HOSTNAME') or lookup('ansible.builtin.env', 'CONTROLLER_HOST') }}"
+    aap_token: "{{ lookup('ansible.builtin.env', 'AAP_TOKEN') or lookup('ansible.builtin.env', 'CONTROLLER_OAUTH_TOKEN') }}"
+    aap_username: "{{ lookup('ansible.builtin.env', 'AAP_USERNAME') or lookup('ansible.builtin.env', 'CONTROLLER_USERNAME') }}"
+    aap_password: "{{ lookup('ansible.builtin.env', 'AAP_PASSWORD') or lookup('ansible.builtin.env', 'CONTROLLER_PASSWORD') }}"
+    aap_validate_certs: >-
+      {{ (lookup('ansible.builtin.env', 'AAP_VALIDATE_CERTS')
+          or lookup('ansible.builtin.env', 'CONTROLLER_VERIFY_SSL')
+          or 'true') | bool }}
+    # Survey answer (encrypted in AAP). Blank keeps the existing credential.
+    aap_fim_baseline_token: ""
     aap_configuration_secure_logging: true
 
   pre_tasks:
-    - name: Confirm site placeholders in aap/vars/00_site.yml were replaced
+    - name: Confirm the site settings were provided
       ansible.builtin.assert:
         that:
           - __placeholders | length == 0
         fail_msg: >-
-          Edit aap/vars/00_site.yml first. These settings still hold placeholder
-          values: {{ __placeholders | join(', ') }}
+          These settings still hold placeholder values:
+          {{ __placeholders | join(', ') }}. Set them as extra variables on the
+          "{{ aap_fim_config_job_template }}" job template (see aap/README.md, step 4).
         quiet: true
       vars:
         __placeholders: >-
           {{ {'aap_fim_organization': aap_fim_organization,
               'aap_fim_inventory': aap_fim_inventory,
-              'aap_fim_machine_credential': aap_fim_machine_credential}
+              'aap_fim_machine_credential': aap_fim_machine_credential,
+              'aap_fim_aap_credential': aap_fim_aap_credential}
              | dict2items | selectattr('value', 'match', 'REPLACE_ME') | map(attribute='key') | list }}
 
-    - name: Confirm AAP connection details are provided
+    - name: Confirm AAP connection details are available
       ansible.builtin.assert:
         that:
           - aap_hostname | length > 0
           - (aap_token | length > 0) or (aap_username | length > 0 and aap_password | length > 0)
         fail_msg: >-
-          Set AAP_HOSTNAME and either AAP_TOKEN or AAP_USERNAME + AAP_PASSWORD
-          in your environment before running this playbook.
+          No AAP connection details were found. Attach a credential of type
+          "Red Hat Ansible Automation Platform" (named in aap_fim_aap_credential)
+          to the "{{ aap_fim_config_job_template }}" job template.
         quiet: true
 
-    - name: Confirm the baseline repository token is provided
-      ansible.builtin.assert:
-        that:
-          - lookup('ansible.builtin.env', 'AIDE_BASELINE_GIT_TOKEN') | length > 0
-        fail_msg: >-
-          Set AIDE_BASELINE_GIT_TOKEN to a token with read/write access to
-          {{ aap_fim_baseline_repo_url }}. It is stored only in the AAP credential
-          "{{ aap_fim_baseline_credential }}".
-        quiet: true
+    - name: Explain what happens to the baseline repository credential
+      ansible.builtin.debug:
+        msg: >-
+          {{ ('A baseline repository token was entered: credential "' ~ aap_fim_baseline_credential
+              ~ '" will be created or its token replaced.')
+             if aap_fim_baseline_token | length > 0 else
+             ('No baseline repository token entered: credential "' ~ aap_fim_baseline_credential
+              ~ '" is left unchanged. It must already exist; on the first run, enter the token in the survey.') }}
 
   roles:
     - role: infra.aap_configuration.dispatch
