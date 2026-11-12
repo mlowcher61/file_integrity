@@ -19,7 +19,7 @@
     - vars/credential_types.yml
     - vars/credentials.yml
     # - vars/execution_environments.yml
-    - vars/projects.yml
+    # - vars/projects.yml
     - vars/job_templates.yml
     - vars/workflows.yml
     - vars/schedules.yml
