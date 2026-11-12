@@ -17,6 +17,12 @@ baseline onto the host and verifies its SHA-256 hash.
 It wraps the Red Hat certified **`redhat.rhel_system_roles.aide`** role. There
 is no custom AIDE role.
 
+> **More detail:** this README is the overview. The [`docs/`](docs/) folder has
+> the in-depth guides:
+> [WATCHLIST.md](docs/WATCHLIST.md) (what is monitored and how to change it),
+> [OPERATIONS.md](docs/OPERATIONS.md) (runbooks and troubleshooting) and
+> [DESIGN.md](docs/DESIGN.md) (architecture and decisions).
+
 ---
 
 ## Contents
@@ -26,6 +32,7 @@ is no custom AIDE role.
 - [Prerequisites](#prerequisites)
 - [Deploy to AAP (from AAP)](#deploy-to-aap-from-aap)
 - [Day-to-day use](#day-to-day-use)
+- [What is monitored](#what-is-monitored)
 - [Variable reference](#variable-reference)
 - [Repository layout](#repository-layout)
 - [Testing and CI](#testing-and-ci)
@@ -148,6 +155,86 @@ from the AAP scheduler. No cron jobs are used on the hosts.
 Runbooks for every scenario, including triaging an alert, adding hosts and
 recovering a corrupt baseline, are in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
+## What is monitored
+
+AIDE watches a list of paths (the **watch list**). Each path is paired with a
+**rule group** that says *what* AIDE records and compares for every file under
+that path.
+
+### Default watch list
+
+| Path | Rule group |
+|---|---|
+| `/boot`, `/etc`, `/usr/bin`, `/usr/sbin`, `/usr/lib`, `/usr/lib64`, `/root/.ssh` | `CONTENTEX` |
+| `/var/log` | `LOG` |
+
+Excluded by default: `/etc/mtab`, editor backups (`/etc/.*~`),
+`/var/log/journal`, and AIDE's own `/var/lib/aide` and `/var/log/aide`.
+
+### Rule groups
+
+`CONTENTEX`, `PERMS` and `LOG` are names defined by this project (in
+`aide_rule_groups`), not AIDE built-ins. Each one is a set of AIDE attributes:
+
+| Rule group | AIDE attributes | Detects | Use it for |
+|---|---|---|---|
+| **`CONTENTEX`** | `sha512+ftype+p+u+g+n+acl+selinux+xattrs` | Any change to file **contents** (SHA-512 hash), plus type, permissions, owner, group, link count, ACLs, SELinux label and extended attributes | Files that should only change when you patch or reconfigure: binaries, libraries, `/etc`, `/boot`, SSH keys |
+| **`PERMS`** | `p+u+g+acl+selinux+xattrs` | **Access** changes only (permissions, owner, group, ACLs, SELinux, xattrs). Content changes are ignored | Content that changes legitimately but whose permissions must not loosen, such as web content |
+| **`LOG`** | `p+u+g+n+acl+selinux+ftype` | Permissions, owner, group, link count and file type. No hash or size, because logs grow | `/var/log`: catches a log replaced by a symlink or made world-writable, without alerting on every new line |
+
+Attribute codes: `p` permissions, `u` owner, `g` group, `n` link count,
+`ftype` file type, `acl` / `selinux` / `xattrs` ACLs, SELinux label and
+extended attributes, `sha512` content hash. The full list is in
+`man aide.conf` and [docs/WATCHLIST.md](docs/WATCHLIST.md#rule-groups), which
+also shows how to define your own group (alphanumeric name, `sha512` or
+`sha256` only).
+
+### Adding paths
+
+Set **`aide_watch_paths_extra`**. It is *merged* with the defaults, so list
+only the new paths:
+
+```yaml
+aide_watch_paths_extra:
+  - { path: /opt/myapp/bin, rule: CONTENTEX }
+  - { path: /var/www/html, rule: PERMS }
+```
+
+- **Where:** in AAP, on the inventory (all hosts), an inventory group, or a
+  host → *Variables*. The files in `inventory/group_vars/` are only used for
+  local runs, not by AAP jobs that use a different inventory. If your
+  inventory source has *Overwrite variables* enabled, set the variables at the
+  inventory level so a sync does not remove them.
+- **Path syntax:** a path is a regular expression matched from the start, so
+  `/usr/lib` also matches `/usr/lib64` and `/usr/libexec`. Use `$` to match one
+  file exactly (`/etc/ssh/sshd_config$`) and escape dots (`/root/\.ssh`).
+- **Excluding:** add paths to `aide_exclude_paths_extra`.
+- **Replacing the defaults:** only override `aide_watch_paths` itself if you
+  want a completely different list; you then have to repeat every default
+  entry you want to keep.
+
+After any change, run **AIDE - Validate Config**, then **AIDE - Change
+Rebaseline**. Otherwise the next check reports every newly watched file as
+*added*. See [docs/WATCHLIST.md](docs/WATCHLIST.md) for the full guide.
+
+### Seeing the files that are actually monitored
+
+Each host's baseline (`baselines/<host>/aide.db.gz` in the baseline
+repository) is a gzip-compressed text file with one line per monitored file.
+A typical RHEL host has 50,000 or more entries.
+
+```bash
+# In a clone of the baseline repository: list every monitored path for a host
+zcat < baselines/node1/aide.db.gz | grep '^/' | cut -d' ' -f1
+
+# Check whether one file is monitored
+zcat < baselines/node1/aide.db.gz | grep '^/etc/ssh/sshd_config '
+
+# On the host itself
+sudo cat /etc/aide.conf      # the rendered watch list and rule groups
+sudo aide --list | less      # every entry in the local AIDE database
+```
+
 ## Variable reference
 
 All defaults live in
@@ -162,7 +249,7 @@ in job template extra vars, or in `inventory/group_vars/` for local runs.
 | `aide_supported_major_versions` | `["8", "9", "10"]` | RHEL major versions that pass pre-flight. |
 | `aide_db_dir` | `/var/lib/aide` | AIDE database directory. Must stay `/var/lib/aide` (the system role hardcodes it). |
 | `aide_log_dir` | `/var/log/aide` | AIDE report log directory. |
-| `aide_rule_groups` | `CONTENTEX`, `PERMS`, `LOG` | Named attribute sets. Names must be alphanumeric. |
+| `aide_rule_groups` | `CONTENTEX`, `PERMS`, `LOG` | Named attribute sets. Names must be alphanumeric. See [Rule groups](#rule-groups). |
 | `aide_watch_paths` | `/boot`, `/etc`, `/usr/bin`, `/usr/sbin`, `/usr/lib`, `/usr/lib64`, `/root/.ssh`, `/var/log` | Baseline watch list (`{path, rule}`). |
 | `aide_watch_paths_extra` | `[]` | Group- or host-level additions, merged in and de-duplicated by path (later wins). |
 | `aide_exclude_paths` | `/etc/mtab`, `/etc/.*~`, `/var/log/journal`, `/var/lib/aide`, `/var/log/aide` | Paths AIDE ignores. |
