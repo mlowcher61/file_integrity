@@ -82,6 +82,7 @@ flowchart LR
   *AIDE - Configure AAP* job template. It creates the credential type,
   credential, execution environment, project, 4 job templates, the approval
   workflow and the daily schedule, and keeps its own job template in sync.
+  Every object that supports labels gets the `file_integrity` label.
 - **AAP-only scheduling.** The AAP scheduler runs the daily check. No cron
   jobs are created on hosts, and any existing AIDE cron entry is removed.
 - **CI** (GitHub Actions). Runs yamllint, ansible-lint (production profile),

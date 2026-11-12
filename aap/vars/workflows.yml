@@ -8,6 +8,8 @@ controller_workflows:
       Approved re-baseline after a change: validate config, wait for approval,
       re-baseline, then confirm a clean check.
     organization: "{{ aap_fim_organization }}"
+    labels:
+      - "{{ aap_fim_label }}"
     inventory: "{{ aap_fim_inventory }}"
     ask_limit_on_launch: true
     allow_simultaneous: false

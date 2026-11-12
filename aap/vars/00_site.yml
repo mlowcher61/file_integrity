@@ -28,6 +28,10 @@ aap_fim_aap_credential: REPLACE_ME_AAP_CREDENTIAL
 # The settings below have working defaults; change them only if needed.
 # -----------------------------------------------------------------------------
 
+# Label applied to every object that supports labels (job templates, the
+# workflow and the schedule), so you can filter on it in the AAP UI.
+aap_fim_label: file_integrity
+
 # Inventory group (or pattern) the AIDE job templates run against.
 aap_fim_target_hosts: aide
 

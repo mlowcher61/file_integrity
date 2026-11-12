@@ -15,6 +15,7 @@
   gather_facts: false
   vars_files:
     - vars/00_site.yml
+    - vars/labels.yml
     - vars/credential_types.yml
     - vars/credentials.yml
     - vars/execution_environments.yml

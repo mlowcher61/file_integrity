@@ -6,6 +6,8 @@ controller_templates:
   - name: AIDE - Deploy
     description: Install AIDE, render aide.conf, create and publish the initial baseline (idempotent).
     organization: "{{ aap_fim_organization }}"
+    labels:
+      - "{{ aap_fim_label }}"
     project: "{{ aap_fim_project_name }}"
     playbook: playbooks/aide_deploy.yml
     inventory: "{{ aap_fim_inventory }}"
@@ -25,6 +27,8 @@ controller_templates:
   - name: AIDE - Check
     description: Restore the off-host baseline, run aide --check and report. Never changes the baseline.
     organization: "{{ aap_fim_organization }}"
+    labels:
+      - "{{ aap_fim_label }}"
     project: "{{ aap_fim_project_name }}"
     playbook: playbooks/aide_check.yml
     inventory: "{{ aap_fim_inventory }}"
@@ -33,6 +37,9 @@ controller_templates:
       - "{{ aap_fim_machine_credential }}"
       - "{{ aap_fim_baseline_credential }}"
     ask_limit_on_launch: true
+    # Required so the "AIDE - Daily Check" schedule can carry the label
+    # (AAP treats schedule labels as a launch prompt).
+    ask_labels_on_launch: true
     allow_simultaneous: false
     extra_vars:
       aide_target_hosts: "{{ aap_fim_target_hosts }}"
@@ -42,6 +49,8 @@ controller_templates:
   - name: AIDE - Rebaseline
     description: Accept the current state as the new baseline after an APPROVED change. Requires a change reference.
     organization: "{{ aap_fim_organization }}"
+    labels:
+      - "{{ aap_fim_label }}"
     project: "{{ aap_fim_project_name }}"
     playbook: playbooks/aide_rebaseline.yml
     inventory: "{{ aap_fim_inventory }}"
@@ -83,6 +92,8 @@ controller_templates:
   - name: AIDE - Validate Config
     description: Render aide.conf to a temp file and run aide --config-check. Makes no changes.
     organization: "{{ aap_fim_organization }}"
+    labels:
+      - "{{ aap_fim_label }}"
     project: "{{ aap_fim_project_name }}"
     playbook: playbooks/aide_config_validate.yml
     inventory: "{{ aap_fim_inventory }}"
@@ -101,6 +112,8 @@ controller_templates:
   - name: "{{ aap_fim_config_job_template }}"
     description: Apply the file_integrity AAP configuration as code (aap/configure_aap.yml).
     organization: "{{ aap_fim_organization }}"
+    labels:
+      - "{{ aap_fim_label }}"
     project: "{{ aap_fim_project_name }}"
     playbook: aap/configure_aap.yml
     inventory: "{{ aap_fim_config_inventory }}"
@@ -115,6 +128,7 @@ controller_templates:
       aap_fim_inventory: "{{ aap_fim_inventory }}"
       aap_fim_machine_credential: "{{ aap_fim_machine_credential }}"
       aap_fim_aap_credential: "{{ aap_fim_aap_credential }}"
+      aap_fim_label: "{{ aap_fim_label }}"
       aap_fim_target_hosts: "{{ aap_fim_target_hosts }}"
       aap_fim_project_url: "{{ aap_fim_project_url }}"
       aap_fim_project_branch: "{{ aap_fim_project_branch }}"

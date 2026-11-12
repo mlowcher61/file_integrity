@@ -1,0 +1,10 @@
+---
+# Labels must exist before templates can use them. The dispatch role creates
+# labels before job templates, workflows and schedules.
+#
+# In AAP, labels are supported on job templates, workflow job templates,
+# inventories and schedules. Credential types, credentials, projects and
+# execution environments have no labels field.
+controller_labels:
+  - name: "{{ aap_fim_label }}"
+    organization: "{{ aap_fim_organization }}"

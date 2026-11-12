@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-12
+
+### Added
+
+- `file_integrity` label (`aap_fim_label`) created by config as code and
+  applied to every object that supports labels in AAP: the 5 job templates,
+  the `AIDE - Change Rebaseline` workflow and the `AIDE - Daily Check`
+  schedule. `AIDE - Check` now prompts for labels on launch, which AAP
+  requires for a schedule to carry a label.
+
 ## [0.2.0] - 2026-11-11
 
 ### Changed
@@ -52,5 +62,6 @@ All notable changes to this project are documented here. The format follows
   test and report parser test on ansible-core 2.16 and latest.
 - Documentation: README, DESIGN, OPERATIONS, WATCHLIST, aap/README.
 
+[0.3.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.1.0

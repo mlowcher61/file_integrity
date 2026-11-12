@@ -11,6 +11,7 @@ to create everything else as code.
 
 | Object | Name | Defined in |
 |---|---|---|
+| Label | `file_integrity` (applied to every object that supports labels; see below) | `vars/labels.yml` |
 | Credential type | `AIDE Baseline Git Token` (secret `token` → env `AIDE_BASELINE_GIT_TOKEN`) | `vars/credential_types.yml` |
 | Credential | `file_integrity baseline repo token` | `vars/credentials.yml` |
 | Execution environment | `ee-supported-rhel9` (optional) | `vars/execution_environments.yml` |
@@ -19,6 +20,15 @@ to create everything else as code.
 | Job template | `AIDE - Configure AAP` (this config-as-code job; managed by itself after the first run) | `vars/job_templates.yml` |
 | Workflow | `AIDE - Change Rebaseline`: Validate Config → **Approval** → Rebaseline → Check | `vars/workflows.yml` |
 | Schedule | `AIDE - Daily Check`: AIDE - Check every day at 03:00 America/Los_Angeles | `vars/schedules.yml` |
+
+**Labels.** Every object that AAP allows to carry a label gets the
+`file_integrity` label (`aap_fim_label`): the 5 job templates, the workflow
+and the schedule. In the AAP UI, filter **Templates** (or **Jobs**) by
+*Label = file_integrity* to see everything belonging to this solution.
+Credential types, credentials, projects and execution environments cannot
+have labels in AAP; they are identifiable by their names and descriptions.
+`AIDE - Check` prompts for labels on launch (pre-filled with
+`file_integrity`), because AAP requires that for a schedule to carry a label.
 
 Checks are scheduled **only** by AAP. No cron jobs are created on your hosts,
 and any existing AIDE cron entry is removed.
@@ -141,6 +151,7 @@ credentials, or a private automation hub that mirrors these collections.*
    aap_fim_project_url: https://github.com/acme/file_integrity.git   # your fork
    aap_fim_create_execution_environment: false      # if ee-supported-rhel9 already exists
    aap_fim_config_inventory: Demo Inventory         # inventory used by this job template
+   aap_fim_label: file_integrity                    # label applied to templates, workflow, schedule
    ```
 
    The full list, with defaults, is in [`vars/00_site.yml`](vars/00_site.yml).
