@@ -200,10 +200,25 @@ credentials, or a private automation hub that mirrors these collections.*
 2. Launch **AIDE - Deploy**. Optionally enter a **Limit** (e.g. one or two
    hosts) for a pilot. Each host reports `new baseline published`, and the
    job prints the baseline repository commit.
+
+   **Verify:** in the baseline repository (e.g.
+   `github.com/mlowcher61/file_integrity_baselines`), each deployed host now
+   has a folder `baselines/<inventory hostname>/` containing `aide.db.gz` and
+   `metadata.yml`. The latest commit message reads
+   `deploy: <hosts> by <your user> (job <id>)`.
 3. Launch **AIDE - Check**. Every host should be **CLEAN**.
-4. Done. **AIDE - Check** now runs every day at 03:00 America/Los_Angeles.
-   Add a notification (Templates → AIDE - Check → *Notifications*) for
-   **Failure** to be alerted about detected changes.
+4. **Add a failure notification**, so someone hears when the daily check
+   finds changes:
+   1. If you don't have one yet, create a notifier under
+      **Automation Execution → Administration → Notifiers** (email, Slack,
+      Microsoft Teams, webhook to ServiceNow, etc.).
+   2. Open **Templates → AIDE - Check → Notifications** and switch on
+      **Failure** for that notifier. (Optionally also on the
+      **AIDE - Change Rebaseline** workflow, including **Approval**, so
+      approvers are notified.)
+
+That's it. **AIDE - Check** now runs every day at 03:00 America/Los_Angeles,
+and a failure means AIDE found changes (or a host could not be checked).
 
 Day-to-day procedures (triage, approved rebaselines, adding hosts, recovery)
 are in [docs/OPERATIONS.md](../docs/OPERATIONS.md).

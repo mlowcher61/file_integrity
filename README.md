@@ -121,7 +121,16 @@ with every field to fill in, is in **[aap/README.md](aap/README.md)**:
    credential) and a password survey for the baseline repository token.
 5. Launch it. It creates the credential type and credential, the EE, the
    job templates, the approval workflow and the daily schedule.
-6. Launch **AIDE - Validate Config**, **AIDE - Deploy**, then **AIDE - Check**.
+6. Deploy AIDE to your hosts ([aap/README.md, step 6](aap/README.md#step-6-deploy-aide-to-your-hosts)):
+   1. Launch **AIDE - Validate Config**. On hosts without AIDE it fails with
+      "AIDE is not installed", which is expected before the first deploy.
+   2. Launch **AIDE - Deploy** (use **Limit** for a pilot). Each host reports
+      `new baseline published`; the baseline repository now has
+      `baselines/<host>/aide.db.gz` and `metadata.yml` for each host.
+   3. Launch **AIDE - Check**. Every host should be **CLEAN**.
+   4. Add a **Failure** notification to **AIDE - Check**
+      (Templates → AIDE - Check → Notifications), so detected changes reach
+      someone.
 
 From then on, **AIDE - Check** runs every day at 03:00 (America/Los_Angeles)
 from the AAP scheduler. No cron jobs are used on the hosts.
