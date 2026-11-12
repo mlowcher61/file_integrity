@@ -51,7 +51,7 @@ aap_fim_baseline_credential: file_integrity baseline repo token
 # Execution environment. ee-supported-rhel9 already contains
 # redhat.rhel_system_roles. Set aap_fim_create_execution_environment to false
 # if an EE with this name already exists in your controller.
-aap_fim_execution_environment: ee-supported-rhel9
+aap_fim_execution_environment: Default execution environment
 aap_fim_create_execution_environment: true
 aap_fim_execution_environment_image: registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9:latest
 # Registry credential used to pull the image. AAP creates this one at install.
