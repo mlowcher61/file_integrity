@@ -35,7 +35,17 @@
           or 'true') | bool }}
     # Survey answer (encrypted in AAP). Blank keeps the existing credential.
     aap_fim_baseline_token: ""
-    aap_configuration_secure_logging: true
+    # Only the credentials role handles secrets (the baseline token), so only
+    # its output is hidden. Every other role logs its errors in full, so a
+    # failure such as "could not find inventory" is visible in the job output.
+    aap_configuration_secure_logging: false
+    controller_configuration_credentials_secure_logging: true
+    # Connection settings for the pre-flight lookups (empty values omitted so
+    # the lookup's own environment fallbacks still apply).
+    __aap_lookup_auth: >-
+      {{ {'host': aap_hostname, 'aap_token': aap_token, 'username': aap_username,
+          'password': aap_password, 'verify_ssl': aap_validate_certs}
+         | dict2items | rejectattr('value', 'equalto', '') | items2dict }}
 
   pre_tasks:
     - name: Confirm the site settings were provided
@@ -65,6 +75,72 @@
           "Red Hat Ansible Automation Platform" (named in aap_fim_aap_credential)
           to the "{{ aap_fim_config_job_template }}" job template.
         quiet: true
+
+    - name: Confirm the existing AAP objects named in the site settings exist
+      ansible.builtin.assert:
+        that:
+          - >-
+            query('ansible.controller.controller_api', item.endpoint,
+                  query_params=item.params, **__aap_lookup_auth) | length > 0
+        fail_msg: "{{ item.missing }}"
+        success_msg: "Found {{ item.what }}"
+      loop: "{{ __existing_objects | selectattr('check') | list }}"
+      loop_control:
+        label: "{{ item.what }}"
+      vars:
+        __existing_objects:
+          - what: organization '{{ aap_fim_organization }}'
+            endpoint: organizations
+            params: { name: "{{ aap_fim_organization }}" }
+            check: true
+            missing: >-
+              Organization '{{ aap_fim_organization }}' (aap_fim_organization) was not
+              found, or the AAP credential's user cannot see it. Names are case-sensitive.
+          - what: inventory '{{ aap_fim_inventory }}'
+            endpoint: inventories
+            params: { name: "{{ aap_fim_inventory }}", organization__name: "{{ aap_fim_organization }}" }
+            check: true
+            missing: >-
+              Inventory '{{ aap_fim_inventory }}' (aap_fim_inventory) was not found in
+              organization '{{ aap_fim_organization }}'. Names are case-sensitive.
+          - what: inventory '{{ aap_fim_config_inventory }}' (for {{ aap_fim_config_job_template }})
+            endpoint: inventories
+            params: { name: "{{ aap_fim_config_inventory }}" }
+            check: true
+            missing: >-
+              Inventory '{{ aap_fim_config_inventory }}' (aap_fim_config_inventory) was not
+              found. Set aap_fim_config_inventory to an inventory that contains localhost.
+          - what: Machine credential '{{ aap_fim_machine_credential }}'
+            endpoint: credentials
+            params: { name: "{{ aap_fim_machine_credential }}" }
+            check: true
+            missing: >-
+              Credential '{{ aap_fim_machine_credential }}' (aap_fim_machine_credential)
+              was not found. Use the exact name of an existing Machine credential.
+          - what: AAP credential '{{ aap_fim_aap_credential }}'
+            endpoint: credentials
+            params: { name: "{{ aap_fim_aap_credential }}" }
+            check: true
+            missing: >-
+              Credential '{{ aap_fim_aap_credential }}' (aap_fim_aap_credential) was not
+              found. Use the exact name of the "Red Hat Ansible Automation Platform"
+              credential attached to this job template.
+          - what: baseline repository credential '{{ aap_fim_baseline_credential }}'
+            endpoint: credentials
+            params: { name: "{{ aap_fim_baseline_credential }}" }
+            # Only required to exist already when no token was entered.
+            check: "{{ aap_fim_baseline_token | length == 0 }}"
+            missing: >-
+              Credential '{{ aap_fim_baseline_credential }}' does not exist yet and no
+              baseline repository token was entered. Launch again and enter the token
+              in the survey (it is required on the first run).
+          - what: registry credential '{{ aap_fim_execution_environment_registry_credential }}'
+            endpoint: credentials
+            params: { name: "{{ aap_fim_execution_environment_registry_credential }}" }
+            check: "{{ aap_fim_create_execution_environment | bool }}"
+            missing: >-
+              Registry credential '{{ aap_fim_execution_environment_registry_credential }}'
+              (aap_fim_execution_environment_registry_credential) was not found.
 
     - name: Explain what happens to the baseline repository credential
       ansible.builtin.debug:

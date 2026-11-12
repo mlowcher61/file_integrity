@@ -246,6 +246,7 @@ approval expires after `aap_fim_approval_timeout` seconds (default 86400).
 |---|---|---|
 | Project sync fails: `Failed to find ... redhat.rhel_system_roles` or `infra.aap_configuration` | The organization cannot reach Automation Hub | Step 1: add the Automation Hub credentials to the organization's **Galaxy credentials**, then sync again. |
 | `These settings still hold placeholder values: ...` | Missing extra variables | Step 4.3. |
+| `... was not found` from *Confirm the existing AAP objects named in the site settings exist* | An extra variable names an object that does not exist (names are case-sensitive), or the AAP credential's user cannot see it | Correct the name in the job template's extra variables, or grant the user access. |
 | `No AAP connection details were found` | The AAP credential is not attached | Attach the **Red Hat Ansible Automation Platform** credential (step 2) to `AIDE - Configure AAP`. |
 | `could not find credential ... file_integrity baseline repo token` on the first run | The survey token was left blank on the first run | Launch again and enter the token. |
 | `Could not find execution environment ee-supported-rhel9` | `aap_fim_create_execution_environment: false` but no EE with that name exists | Set it to `true`, or set `aap_fim_execution_environment` to the name of an existing EE that contains `redhat.rhel_system_roles`. |

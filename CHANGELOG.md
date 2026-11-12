@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-11-12
+
+### Fixed
+
+- `AIDE - Configure AAP` hid the cause of failures (`censored ... no_log`)
+  because secure logging was enabled for every role. Only the credentials
+  role (which handles the baseline token) is now secure-logged; all other
+  errors are shown in full.
+- `community.general` pinned to `>=10.0.0,<12.0.0`; 12.x does not support
+  the ansible-core 2.16 shipped in the AAP 2.6 supported EEs.
+
+### Added
+
+- Pre-flight checks in `configure_aap.yml` confirm that the organization,
+  inventories and credentials named in the site settings exist (and that the
+  baseline credential exists when no token is entered), and name any that
+  are missing before anything is created.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added
@@ -62,6 +80,7 @@ All notable changes to this project are documented here. The format follows
   test and report parser test on ansible-core 2.16 and latest.
 - Documentation: README, DESIGN, OPERATIONS, WATCHLIST, aap/README.
 
+[0.3.1]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.3.1
 [0.3.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.1.0
