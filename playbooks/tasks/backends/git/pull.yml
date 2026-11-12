@@ -39,6 +39,7 @@
             depth: 1
             single_branch: true
             accept_newhostkey: true
+          register: __aide_fim_git_clone
           changed_when: false   # a scratch clone is not a change to any managed system
           no_log: true
       rescue:
@@ -49,6 +50,13 @@
               (branch {{ aide_baseline_repo_branch }}). Check that the URL is
               correct, the branch exists and has at least one commit, and the
               AIDE Baseline Git Token credential has read/write access.
+              Git said: {{ __git_error }}
+          vars:
+            __mask: "{{ aide_baseline_git_token if aide_baseline_git_token | length > 0 else '\u0000' }}"
+            __git_error: >-
+              {{ (__aide_fim_git_clone.msg | default(__aide_fim_git_clone.stderr | default('')))
+                 | replace(__mask, '********')
+                 | replace(__mask | urlencode | replace('/', '%2F'), '********') }}
 
     # ansible.builtin.git cannot rewrite a remote URL.
     - name: Git backend | Remove the token from the clone's remote URL  # noqa: command-instead-of-module

@@ -135,9 +135,11 @@ __aide_fim_fetch_dir: "{{ __aide_fim_workdir.path }}/fetched"
 __aide_fim_fetched_db: "{{ __aide_fim_fetch_dir }}/{{ inventory_hostname }}{{ aide_db_dir }}/aide.db.new.gz"
 __aide_fim_host_dir: "{{ __aide_fim_stage_dir }}/{{ aide_baseline_path_prefix }}/{{ inventory_hostname }}"
 # Baseline repo URL with credentials embedded (http(s) only). Only ever used
-# in tasks marked no_log.
+# in tasks marked no_log. Plain string replace (first "://" only) rather than
+# regex_replace: a '\\1' backreference inside a folded (>-) scalar is not
+# unescaped by YAML and renders as a literal "\1", which drops the scheme.
 __aide_fim_repo_auth_url: >-
-  {{ aide_baseline_repo_url | regex_replace('^(https?://)',
-     '\\1' ~ (aide_baseline_git_username | urlencode) ~ ':' ~ (aide_baseline_git_token | urlencode) ~ '@')
+  {{ aide_baseline_repo_url | replace('://',
+     '://' ~ (aide_baseline_git_username | urlencode) ~ ':' ~ (aide_baseline_git_token | urlencode | replace('/', '%2F')) ~ '@', 1)
      if (aide_baseline_repo_url is match('^https?://') and aide_baseline_git_token | length > 0)
      else aide_baseline_repo_url }}
