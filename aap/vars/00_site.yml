@@ -11,18 +11,18 @@
 # =============================================================================
 
 # Existing AAP organization that will own every object created here.
-aap_fim_organization: REPLACE_ME_ORGANIZATION
+aap_fim_organization: Default
 
 # Existing AAP inventory that contains your RHEL hosts. The playbooks target
 # the inventory group `aide` by default (see aap_fim_target_hosts below).
-aap_fim_inventory: REPLACE_ME_INVENTORY
+aap_fim_inventory: AWS Inventory
 
 # Existing Machine credential (SSH user with sudo) for those hosts.
-aap_fim_machine_credential: REPLACE_ME_MACHINE_CREDENTIAL
+aap_fim_machine_credential: aws-t5d26
 
 # Existing credential of type "Red Hat Ansible Automation Platform" that
 # "AIDE - Configure AAP" uses to talk to the AAP API.
-aap_fim_aap_credential: REPLACE_ME_AAP_CREDENTIAL
+aap_fim_aap_credential: AAP Credential
 
 # -----------------------------------------------------------------------------
 # The settings below have working defaults; change them only if needed.
