@@ -82,8 +82,34 @@ Baseline: 2026-11-11T20:19:53Z sha256 5cbb36d9...
 | `Counts:` | Number of added, removed and changed entries, and how many entries AIDE scanned. |
 | `Baseline:` | When the trusted baseline was created and its sha256. Every difference happened **after** this time. |
 | `Config:` | Only shown when `/etc/aide.conf` had been edited on the host. It was put back. |
+| `Packages:` | Count of package verdicts for the listed paths (see below). |
 | `added` / `removed` | A file or directory appeared or disappeared since the baseline. |
 | `changed` + indented lines | The file still exists but some attributes differ. Each indented line is `attribute : baseline value -> current value`. |
+| `Package :` (indented) | Owning RPM, its install time (flagged **after the baseline** when newer), and the verdict below. |
+| `Diff` (indented) | Unified diff against the content snapshot taken at the last Deploy/Rebaseline (files in `aide_content_snapshot_paths` only). Lines starting with `-` were in the baseline, `+` are new. |
+
+Package verdicts (`aide_report_package_check`, from `rpm -qf` and `rpm -V` on
+the host):
+
+| Verdict | Meaning | What it tells you |
+|---|---|---|
+| `file matches the package` | `rpm -V` finds no difference (mtime-only differences ignored) | The content is exactly what the vendor shipped. If the package was installed **after the baseline**, the change is a package update: check `dnf history` for who or what ran it. |
+| `config file modified locally` | A `%config` file differs from the package default | Normal for edited configuration. Look at the diff (if snapshotted) or your config management. |
+| `DIFFERS FROM THE PACKAGE` | A **non-config** file (binary, library, script) differs from what its package shipped | **Suspicious.** No package update explains it. Escalate unless you know of a manual hotfix. |
+| `rpm does not verify this file's contents` | The package excludes the file's digest from verification (`%verify(not md5 ...)`, for example `/etc/passwd`, `/etc/hosts`, `/etc/group` from `setup`) | RPM can neither explain nor clear the change. Use the diff or investigate. |
+| `package file is missing` | The package expects the file, but it is gone | Investigate. |
+| `not owned by any package` | No RPM owns the path | Locally created file: check the diff, your config management, or who created it. New unowned files in `/etc/cron.d`, `/etc/systemd/system`, `/etc/sudoers.d` or `/root/.ssh` are classic persistence. |
+
+The RPM database lives on the monitored host, so treat verdicts as a quick
+triage aid, not as proof; an attacker with root can alter it. The AIDE result
+(hashes compared with the off-host baseline) is the trustworthy part.
+
+Diffs are only shown for files listed in `aide_content_snapshot_paths`, and
+only when the stored copy still matches the sha256 in `metadata.yml`. AIDE
+itself stores hashes, not content, so there is no diff for other files. For
+those, compare against the package (`rpm -V`, or extract the original with
+`dnf download <package>` and `rpm2cpio <package>.rpm | cpio -idmv`), your
+configuration management source, or a backup.
 
 The attributes you can see:
 
@@ -132,12 +158,30 @@ which usually answers the first question quickly.
 
 **Step 1: Is it explained by an approved change?**
 
+- Start with the `Package :` lines. A path whose package was installed
+  **after the baseline** and whose file **matches the package** is a package
+  update; `dnf history list` and `dnf history info <id>` show what ran it.
 - Was there a patch window, package update, or configuration management run
-  since the baseline timestamp (`Baseline:` line)? Check `dnf history`,
-  `rpm -qf <path>`, your CMDB or change calendar, and AAP job history for the host.
-- For package-owned files, `rpm -Vf <path>` shows whether the file still
-  matches the RPM database. A changed `/usr/sbin/sshd` that `rpm -V` also
-  flags, with no update in `dnf history`, is **suspicious**.
+  since the baseline timestamp (`Baseline:` line)? Check your CMDB or change
+  calendar and AAP job history for the host.
+- A changed `/usr/sbin/sshd` with the verdict `DIFFERS FROM THE PACKAGE` and
+  no update in `dnf history` is **suspicious**.
+- For snapshotted files, the `Diff` shows exactly what changed.
+
+**Worked example (AIDE - Check job 1163, RHEL 9 on AWS).** All four hosts
+reported about 30 paths the morning after deployment:
+
+| Paths | Explanation |
+|---|---|
+| 22 RHUI files (`/usr/bin/rhui-*`, `/etc/pki/rhui/*`, `/etc/yum.repos.d/redhat-rhui*`, ...) | `rh-amazon-rhui-client` updated itself at 03:40 via its own `/etc/cron.daily/update-client-config-packages` (`dnf history` ID 10); `rpm -V` confirmed the files match the package. Rebaseline under a change ref. |
+| `/etc/pki/entitlement/*.pem` | `rhsmcertd` renewed the subscription certificate. Excluded by default since v0.5.0. |
+| `/etc/insights-client/.lastupload` | Daily Insights upload. Excluded by default since v0.5.0. |
+| `/var/log/nginx/*-YYYYMMDD*`, `/var/log/audit/audit.log.1` | Log rotation. Excluded by default since v0.5.0. |
+
+With v0.5.0 the RHUI paths show `Package : rh-amazon-rhui-client-... (installed ..., after the baseline) - file matches the package`,
+so this triage takes seconds. The RHUI client keeps updating itself whenever
+Amazon publishes a new version: either rebaseline when it does, or disable
+that cron job and update RHUI in your normal patch window.
 
 **Step 2: Classify it**
 
@@ -151,7 +195,9 @@ which usually answers the first question quickly.
 | Permission or owner change only (`Perm`, `Uid`, `Gid` lines, no `SHA512`) | Manual `chmod`/`chown`, or a misbehaving script | Investigate; fix or rebaseline. |
 | `Perm` gains an `s` (for example `-rwxr-xr-x -> -rwsr-xr-x`) | setuid/setgid bit added | **Suspicious** unless a package update explains it. Escalate. |
 | `SELinux` context changed on a file or directory | Manual `chcon`, files moved instead of copied, or a relabel | Run `restorecon -nv <path>` to see the expected label. Escalate if it weakens confinement. |
-| `SHA512` changed on a binary but `rpm -Vf <path>` reports nothing | The package was legitimately updated | Rebaseline under the patch change ref. |
+| `SHA512` changed, `Package :` says *matches the package*, installed *after the baseline* | Legitimate package update | Rebaseline under the patch change ref. |
+| `Package :` says *DIFFERS FROM THE PACKAGE* on a binary or library | Replaced or patched binary | **Suspicious.** Escalate. |
+| `Diff` shows an added user, sudo rule, cron entry or weakened SSH setting | Manual change or persistence | Confirm against a change; otherwise escalate. |
 | The same benign path flags on every check (e.g. an app writes a state file under `/etc`) | Noisy path | Add an exclusion or a looser rule (see [WATCHLIST.md](WATCHLIST.md)), validate, then rebaseline. |
 
 **Step 3: If it is suspicious**
@@ -159,8 +205,10 @@ which usually answers the first question quickly.
 1. **Do not rebaseline.** The baseline repo is your evidence of the last
    known-good state.
 2. Keep the failed AAP job output and the `aide_check_results` stats. They
-   include the full old and new hashes (`changed_details`), which you can
-   compare with known-good packages or threat-intelligence hashes.
+   include the full old and new hashes (`changed_details`), the package
+   verdicts (`package_checks`) and the diffs (`content_diffs`). Compare the
+   hashes with known-good packages or threat-intelligence hashes. The content
+   snapshots in the baseline repository are your copy of the known-good files.
 3. Follow your incident response process (isolate the host, capture memory
    and disk, etc.).
 4. After the host is rebuilt or cleaned, re-deploy it (§5, or §6 if the

@@ -15,6 +15,9 @@
   roles:
     - role: file_integrity_defaults
   vars:
+    # Host-side enrichment (rpm, content snapshots) is covered by
+    # tests/test_filters.yml; localhost may not even have rpm.
+    aide_report_package_check: false
     __cases:
       - fixture: aide_0.16_changed.txt
         rc: 4

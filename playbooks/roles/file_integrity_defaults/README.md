@@ -7,8 +7,11 @@ under `roles:` so that:
 - the variables in `defaults/main.yml` are loaded at the lowest possible
   precedence, and
 - the filter plugins in `filter_plugins/` are available. `aide_report.py`
-  provides `aide_change_details` and `aide_change_lines`, used by
-  `playbooks/tasks/report.yml` to show what changed on each changed path.
+  provides the filters used by `playbooks/tasks/report.yml` and
+  `report_enrich.yml`: `aide_change_details` (what changed on each path),
+  `aide_package_checks` / `aide_package_summary` (RPM verdicts),
+  `aide_content_diffs` (diffs against content snapshots) and
+  `aide_report_lines` (the readable job output).
 
 Why not `inventory/group_vars/all`? In Ansible Automation Platform the
 inventory is a separate object, so `group_vars/` that live next to an

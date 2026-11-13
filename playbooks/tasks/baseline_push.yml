@@ -1,9 +1,10 @@
 ---
 # Backend-neutral baseline publication.
 #
-# Copies each host's freshly fetched database into the staging directory,
-# writes metadata.yml (timestamp, job, user, sha256, change ref), then hands
-# off to playbooks/tasks/backends/<backend>/push.yml to persist it.
+# Copies each host's freshly fetched database and its content snapshots
+# (aide_content_snapshot_paths) into the staging directory, writes
+# metadata.yml (timestamp, job, user, sha256s, change ref), then hands off to
+# playbooks/tasks/backends/<backend>/push.yml to persist it.
 # Requires baseline_pull.yml to have staged the store first.
 #
 # Inputs:
@@ -18,6 +19,45 @@
     checksum_algorithm: sha256
   register: __aide_fim_conf_stat
   when: inventory_hostname in aide_baseline_push_hosts
+
+- name: Baseline push | Capture content snapshots on each host
+  when:
+    - inventory_hostname in aide_baseline_push_hosts
+    - aide_content_snapshot_paths_merged | length > 0
+  vars:
+    __eligible: >-
+      {{ __aide_fim_snap_stats.results | default([])
+         | selectattr('stat.exists') | selectattr('stat.isreg')
+         | selectattr('stat.size', 'le', aide_content_snapshot_max_bytes | int) | list }}
+  block:
+    - name: Baseline push | Inspect the files to snapshot
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      loop: "{{ aide_content_snapshot_paths_merged }}"
+      register: __aide_fim_snap_stats
+
+    - name: Baseline push | Fetch the files to snapshot
+      ansible.builtin.fetch:
+        src: "{{ item.item }}"
+        dest: "{{ __aide_fim_fetch_dir }}/snapshots/{{ inventory_hostname }}{{ item.item }}"
+        flat: true
+      loop: "{{ __eligible }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Baseline push | Record the snapshot checksums
+      ansible.builtin.set_fact:
+        __aide_fim_snapshots: "{{ dict(__eligible | map(attribute='item') | zip(__eligible | map(attribute='stat.checksum'))) }}"
+
+    - name: Baseline push | Report files that were not snapshotted
+      ansible.builtin.debug:
+        msg: >-
+          Not snapshotted (missing, not a regular file, or larger than
+          aide_content_snapshot_max_bytes={{ aide_content_snapshot_max_bytes }}):
+          {{ aide_content_snapshot_paths_merged | difference(__aide_fim_snapshots.keys() | list) | join(', ') }}
+      when: aide_content_snapshot_paths_merged | difference(__aide_fim_snapshots.keys() | list) | length > 0
 
 - name: Baseline push | Publish baselines
   when: aide_baseline_push_hosts | length > 0
@@ -38,6 +78,21 @@
         dest: "{{ __aide_fim_stage_dir }}/{{ aide_baseline_path_prefix }}/{{ item }}/aide.db.gz"
         mode: "0644"
       loop: "{{ aide_baseline_push_hosts }}"
+
+    - name: Baseline push | Remove the previous content snapshots
+      ansible.builtin.file:
+        path: "{{ __aide_fim_stage_dir }}/{{ aide_baseline_path_prefix }}/{{ item }}/snapshots"
+        state: absent
+      loop: "{{ aide_baseline_push_hosts }}"
+
+    - name: Baseline push | Copy the new content snapshots into the baseline store
+      ansible.builtin.copy:
+        src: "{{ __aide_fim_fetch_dir }}/snapshots/{{ item }}/"
+        dest: "{{ __aide_fim_stage_dir }}/{{ aide_baseline_path_prefix }}/{{ item }}/snapshots/"
+        mode: "0644"
+        directory_mode: "0755"
+      loop: "{{ aide_baseline_push_hosts }}"
+      when: hostvars[item].__aide_fim_snapshots | default({}) | length > 0
 
     - name: Baseline push | Hash the new baselines
       ansible.builtin.stat:
@@ -72,6 +127,8 @@
           aide_version: "{{ __hv.aide_version | default('unknown') }}"
           os: "{{ __hv.ansible_facts.distribution | default('') }} {{ __hv.ansible_facts.distribution_version | default('') }}"
           aide_conf_sha256: "{{ __hv.__aide_fim_conf_stat.stat.checksum | default('') }}"
+          # Content snapshots: {path: sha256}, stored under snapshots/<path>.
+          snapshots: "{{ __hv.__aide_fim_snapshots | default({}) }}"
           changes_accepted:
             added: "{{ __hv.aide_report.added | default(0) }}"
             removed: "{{ __hv.aide_report.removed | default(0) }}"

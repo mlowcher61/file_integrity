@@ -89,3 +89,6 @@ jobs:
 
       - name: Report parser test
         run: ansible-playbook tests/test_report.yml
+
+      - name: Report filter test (package verdicts, content diffs, snapshot validation)
+        run: ansible-playbook tests/test_filters.yml

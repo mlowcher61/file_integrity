@@ -1,0 +1,153 @@
+---
+# Filter and validation test (run in CI, no target hosts needed):
+#   ansible-playbook tests/test_filters.yml
+#
+# Exercises the report filters in
+# playbooks/roles/file_integrity_defaults/filter_plugins/aide_report.py with
+# canned inputs, and the content snapshot path validation used by pre-flight.
+# The rpm input mirrors real output captured on a RHEL 9 host on AWS after the
+# rh-amazon-rhui-client package updated itself (job 1163 triage).
+
+- name: Test | Report filters and snapshot path validation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: file_integrity_defaults
+  vars:
+    __rpm_raw: |-
+      O	/usr/bin/rhui-set-release	rh-amazon-rhui-client-4.0.35-1.el9.noarch	1794541203	-1	0
+      O	/etc/yum.repos.d/redhat-rhui.repo	rh-amazon-rhui-client-4.0.35-1.el9.noarch	1794541203	-1	17
+      O	/etc/ssh/sshd_config	openssh-server-8.7p1-38.el9.x86_64	1790000000	-1	17
+      O	/usr/sbin/sshd	openssh-server-8.7p1-38.el9.x86_64	1790000000	-1	0
+      O	/etc/passwd	setup-2.13.7-10.el9.noarch	1790000000	-36	17
+      O	/usr/bin/legacy	legacy-1.0-1.el9.noarch	1790000000
+      N	/etc/pki/entitlement/744169138657782112.pem
+      V	missing   c /etc/yum.repos.d/redhat-rhui-beta.repo
+      V	.......T.  c /etc/yum.repos.d/redhat-rhui.repo
+      V	S.5....T.  c /etc/ssh/sshd_config
+      V	S.5....T.    /usr/sbin/sshd
+    __checks: "{{ __rpm_raw | aide_package_checks('2026-11-12T22:23:56Z') }}"
+
+    __old_text: "PermitRootLogin no\nPort 22\nX11Forwarding no\n"
+    __new_text: "PermitRootLogin yes\nPort 22\nX11Forwarding no\n"
+    __old_results:
+      - { item: /etc/ssh/sshd_config, content: "{{ __old_text | b64encode }}" }
+      - { item: /etc/hosts, content: "{{ 'tampered' | b64encode }}" }
+      - { item: /etc/passwd, content: "{{ 'same' | b64encode }}" }
+      - { item: /etc/fstab, content: "{{ 'small' | b64encode }}" }
+    __new_results:
+      - { item: /etc/ssh/sshd_config, content: "{{ __new_text | b64encode }}" }
+      - { item: /etc/hosts, content: "{{ 'anything' | b64encode }}" }
+      - { item: /etc/passwd, content: "{{ 'same' | b64encode }}" }
+      - { item: /etc/fstab, skipped: true }
+    __expected_sha256:
+      /etc/ssh/sshd_config: "{{ __old_text | hash('sha256') }}"
+      /etc/hosts: "{{ 'original' | hash('sha256') }}"
+      /etc/passwd: "{{ 'same' | hash('sha256') }}"
+      /etc/fstab: "{{ 'small' | hash('sha256') }}"
+    __diffs: "{{ __old_results | aide_content_diffs(__new_results, __expected_sha256, 100) }}"
+
+    __report:
+      added_paths: []
+      removed_paths: []
+      changed_paths: [/usr/sbin/sshd, /etc/ssh/sshd_config]
+      changed_details:
+        /usr/sbin/sshd: [{ attribute: SHA512, old: "{{ 'A' * 88 }}", new: "{{ 'B' * 88 }}" }]
+        /etc/ssh/sshd_config: [{ attribute: Perm, old: "-rw-------", new: "-rw-r--r--" }]
+      package_checks: "{{ __checks }}"
+      content_diffs: "{{ __diffs }}"
+    __lines: "{{ __report | aide_report_lines(hash_width=16) }}"
+
+  tasks:
+    - name: Test | Package verdicts
+      ansible.builtin.assert:
+        that:
+          - __checks['/usr/bin/rhui-set-release'].verdict == 'matches-package'
+          - __checks['/usr/bin/rhui-set-release'].packages[0].package == 'rh-amazon-rhui-client-4.0.35-1.el9.noarch'
+          - __checks['/usr/bin/rhui-set-release'].packages[0].installed == '2026-11-13T03:40:03Z'
+          - __checks['/usr/bin/rhui-set-release'].packages[0].after_baseline
+          # mtime-only difference (T) still matches the package
+          - __checks['/etc/yum.repos.d/redhat-rhui.repo'].verdict == 'matches-package'
+          - __checks['/etc/ssh/sshd_config'].verdict == 'config-modified'
+          - __checks['/etc/ssh/sshd_config'].config_file
+          - not __checks['/etc/ssh/sshd_config'].packages[0].after_baseline
+          - __checks['/usr/sbin/sshd'].verdict == 'differs'
+          - __checks['/usr/sbin/sshd'].rpm_verify_flags == 'S.5....T.'
+          - __checks['/etc/pki/entitlement/744169138657782112.pem'].verdict == 'not-owned'
+          # setup marks /etc/passwd %verify(not md5 size mtime): rpm cannot vouch for its content
+          - __checks['/etc/passwd'].verdict == 'unverified'
+          - __checks['/etc/passwd'].config_file
+          # older output without flag columns still works (assumes digest verified)
+          - __checks['/usr/bin/legacy'].verdict == 'matches-package'
+          # rpm -V lines for files that were not reported are ignored
+          - "'/etc/yum.repos.d/redhat-rhui-beta.repo' not in __checks"
+          - (__checks | aide_package_summary) == 'differs 1, unverified 1, config-modified 1, matches-package 3, not-owned 1'
+          - ('' | aide_package_checks) == {}
+        fail_msg: "{{ __checks | to_json }}"
+        quiet: true
+
+    - name: Test | Content diffs
+      ansible.builtin.assert:
+        that:
+          - __diffs['/etc/ssh/sshd_config'] == ['--- baseline:/etc/ssh/sshd_config', '+++ current:/etc/ssh/sshd_config',
+            '@@ -1,3 +1,3 @@', '-PermitRootLogin no', '+PermitRootLogin yes', ' Port 22', ' X11Forwarding no']
+          - __diffs['/etc/hosts'][0] is search('does not match metadata.yml')
+          - __diffs['/etc/passwd'][0] is search('identical')
+          - __diffs['/etc/fstab'][0] is search('larger than')
+        fail_msg: "{{ __diffs | to_json }}"
+        quiet: true
+
+    - name: Test | Report lines
+      ansible.builtin.assert:
+        that:
+          - __lines[0] == '  changed  /usr/sbin/sshd'
+          - >-
+            __lines[1] is search('Package : openssh-server-8.7p1-38.el9.x86_64 .* DIFFERS FROM THE PACKAGE .*\[rpm -V. S\.5\.\.\.\.T\.\]')
+          - >-
+            __lines[2] is search('SHA512 : A{16}\.\.\. -> B{16}\.\.\.$')
+          - "'  changed  /etc/ssh/sshd_config' in __lines"
+          - >-
+            __lines | select('search', 'Perm : -rw------- -> -rw-r--r--') | list | length == 1
+          - __lines | select('search', 'Diff \(baseline snapshot -> current\):') | list | length == 1
+          - __lines | select('search', '^ +\+PermitRootLogin yes$') | list | length == 1
+        fail_msg: "{{ __lines | to_json }}"
+        quiet: true
+
+    - name: Test | Snapshot path validation accepts the defaults
+      ansible.builtin.assert:
+        that:
+          - __aide_fim_snapshot_rejected == []
+        fail_msg: "Default snapshot paths rejected: {{ __aide_fim_snapshot_rejected }}"
+        quiet: true
+
+    - name: Test | Snapshot path validation rejects secrets and bad paths
+      ansible.builtin.assert:
+        that:
+          - __aide_fim_snapshot_rejected | sort == __expected | sort
+        fail_msg: "Rejected {{ __aide_fim_snapshot_rejected }}, expected {{ __expected }}"
+        quiet: true
+      vars:
+        aide_content_snapshot_paths:
+          - /etc/hosts
+          - /etc/shadow
+          - /etc/gshadow-
+          - /etc/ssh/ssh_host_ed25519_key
+          - /etc/ssh/ssh_host_ed25519_key.pub
+          - /root/.ssh/id_rsa
+          - /root/.ssh/id_rsa.pub
+          - /etc/pki/tls/private/server.key
+          - /etc/krb5.keytab
+          - /etc/*.conf
+          - etc/relative
+          - /etc/
+        __expected:
+          - /etc/shadow
+          - /etc/gshadow-
+          - /etc/ssh/ssh_host_ed25519_key
+          - /root/.ssh/id_rsa
+          - /etc/pki/tls/private/server.key
+          - /etc/krb5.keytab
+          - /etc/*.conf
+          - etc/relative
+          - /etc/

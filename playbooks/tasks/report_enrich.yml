@@ -1,0 +1,95 @@
+---
+# Adds triage information to aide_report for a host with changes.
+# Included by report.yml after parsing; runs on the managed host (become).
+#
+#   package_checks - owning RPM and `rpm -V` verdict for each listed added or
+#                    changed path (aide_report_package_check)
+#   content_diffs  - unified diff for each listed changed path that has a
+#                    verified content snapshot in the baseline
+#                    (aide_content_snapshot_paths)
+#
+# Filters: filter_plugins/aide_report.py in the file_integrity_defaults role.
+
+- name: Report | Verify the reported paths against the RPM database
+  when:
+    - aide_report_package_check | bool
+    - (aide_report.added_paths + aide_report.changed_paths) | length > 0
+  block:
+    # One process for all paths: rpm -qf per path (a file can belong to
+    # several packages) plus that file's verify/config flags, then rpm -V once
+    # per owning package. Paths are passed as arguments, never interpolated
+    # into the script.
+    - name: Report | Look up owning packages and run rpm -V
+      ansible.builtin.command:
+        argv: "{{ ['sh', '-c', __script, 'aide-rpm-check'] + aide_report.added_paths + aide_report.changed_paths }}"
+      register: __aide_fim_rpm
+      changed_when: false
+      failed_when: false
+      vars:
+        __script: |
+          tmp=$(mktemp) || exit 1
+          tab=$(printf '\t')
+          trap 'rm -f "$tmp"' EXIT
+          for p in "$@"; do
+            out=$(rpm -qf --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\t%{INSTALLTIME}\n' "$p" 2>/dev/null) || out=""
+            if [ -z "$out" ]; then
+              printf 'N\t%s\n' "$p"
+            else
+              printf '%s\n' "$out" | while IFS="$tab" read -r nevra itime; do
+                flags=$(rpm -q --qf '[%{FILENAMES}\t%{FILEVERIFYFLAGS}\t%{FILEFLAGS}\n]' "$nevra" 2>/dev/null \
+                  | awk -F '\t' -v p="$p" '$1 == p { print $2 "\t" $3; exit }')
+                printf 'O\t%s\t%s\t%s\t%s\n' "$p" "$nevra" "$itime" "$flags"
+              done
+            fi
+          done > "$tmp"
+          cat "$tmp"
+          awk -F '\t' '$1 == "O" { print $3 }' "$tmp" | sort -u \
+            | xargs -r rpm -V --nodeps --noscripts 2>/dev/null | awk '{ print "V\t" $0 }'
+          exit 0
+
+    - name: Report | Add the package verdicts to the report
+      ansible.builtin.set_fact:
+        aide_report: >-
+          {{ aide_report | combine({'package_checks': __aide_fim_rpm.stdout
+             | aide_package_checks(aide_baseline_metadata.timestamp | default(''))}) }}
+
+- name: Report | Diff changed files against their baseline content snapshots
+  when: __snap_paths | length > 0
+  vars:
+    __snap_paths: >-
+      {{ aide_report.changed_paths
+         | intersect((aide_baseline_metadata.snapshots | default({}, true)).keys() | list)
+         if aide_baseline_metadata is defined and __aide_fim_stage_dir is defined else [] }}
+  block:
+    - name: Report | Read the baseline snapshots
+      ansible.builtin.slurp:
+        src: "{{ __aide_fim_host_dir }}/snapshots{{ item }}"
+      loop: "{{ __snap_paths }}"
+      register: __aide_fim_snap_old
+      failed_when: false
+      delegate_to: localhost
+      become: false
+
+    - name: Report | Check the size of the current files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        get_checksum: false
+      loop: "{{ __snap_paths }}"
+      register: __aide_fim_snap_stat
+
+    - name: Report | Read the current files
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop: "{{ __snap_paths }}"
+      register: __aide_fim_snap_new
+      failed_when: false
+      when: >-
+        (__aide_fim_snap_stat.results | selectattr('item', 'equalto', item) | first).stat.size | default(0)
+        <= aide_content_snapshot_max_bytes | int
+
+    - name: Report | Add the content diffs to the report
+      ansible.builtin.set_fact:
+        aide_report: >-
+          {{ aide_report | combine({'content_diffs': __aide_fim_snap_old.results
+             | aide_content_diffs(__aide_fim_snap_new.results, aide_baseline_metadata.snapshots,
+                                  aide_content_diff_max_lines | int)}) }}

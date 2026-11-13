@@ -72,6 +72,11 @@ aide_exclude_paths:
   - /var/log/journal       # binary journal; rotated and rewritten by systemd
   - /var/lib/aide          # AIDE's own databases
   - /var/log/aide          # AIDE's own reports
+  # Routine RHEL housekeeping that rewrites files every day (see docs/WATCHLIST.md):
+  - /etc/insights-client/\.last        # Red Hat Insights upload status files
+  - /etc/pki/entitlement               # subscription certificates renewed by rhsmcertd
+  - /var/log/.*-[0-9]{8}(\.gz)?$       # logrotate "dateext" files (messages-20261113.gz)
+  - /var/log/.*\.[0-9]+(\.gz)?$        # numbered rotations (audit.log.1, secure.2.gz)
 
 # Group- or host-level additional exclusions.
 aide_exclude_paths_extra: []
@@ -98,6 +103,44 @@ aide_report_max_paths: 200
 # (0 = the full value). The full values are always in set_stats
 # (aide_check_results.<host>.changed_details).
 aide_report_hash_chars: 16
+# For each added/changed path, look up the owning RPM on the host and run
+# `rpm -V` on it, so the report says whether the file is exactly what the
+# package shipped (and whether that package was installed after the baseline).
+# Triage aid only: the RPM database lives on the monitored host.
+aide_report_package_check: true
+
+# ----- Content snapshots (diffs for changed text files) ----------------------
+# Deploy and Rebaseline store a copy of these files in the baseline repository
+# (baselines/<host>/snapshots/<path>). When Check finds one of them changed,
+# the report shows a unified diff against the snapshot. Exact file paths only.
+# NEVER list secrets: the copies are stored in Git and diffs appear in job
+# output. Pre-flight rejects paths matching aide_content_snapshot_forbidden.
+aide_content_snapshot_paths:
+  - /etc/ssh/sshd_config
+  - /etc/sudoers
+  - /etc/passwd
+  - /etc/group
+  - /etc/hosts
+  - /etc/crontab
+  - /etc/fstab
+  - /etc/selinux/config
+# Group- or host-level additions.
+aide_content_snapshot_paths_extra: []
+# Files larger than this are not snapshotted (or diffed).
+aide_content_snapshot_max_bytes: 65536
+# Maximum diff lines shown per file.
+aide_content_diff_max_lines: 100
+# Regular expressions for paths that must never be snapshotted.
+aide_content_snapshot_forbidden:
+  - '^/etc/g?shadow-?$'
+  - '^/etc/security/opasswd$'
+  - '_key$'
+  - '\.key$'
+  - 'key\.pem$'
+  - '/\.ssh/id_[^/.]+$'
+  - 'keytab$'
+  - '\.(p12|pfx|jks)$'
+  - '^/etc/pki/'
 # Seconds an `aide --init/--check/--update` may run before Ansible gives up.
 aide_command_timeout: 3600
 
@@ -131,6 +174,16 @@ aide_launched_by: >-
      | default(lookup('ansible.builtin.env', 'USER'), true) | default('unknown', true) }}
 
 # ----- Internal (do not override) -------------------------------------------
+aide_content_snapshot_paths_merged: "{{ (aide_content_snapshot_paths + aide_content_snapshot_paths_extra) | unique }}"
+# Snapshot paths pre-flight rejects: not an absolute file path without
+# wildcards, or matching aide_content_snapshot_forbidden. ("[^]*?[]" is the
+# class "not ], *, ? or [", written without backslashes on purpose.)
+__aide_fim_snapshot_rejected: >-
+  {{ ((aide_content_snapshot_paths_merged | reject('match', '^/[^]*?[]*[^/]$') | list)
+      + ((aide_content_snapshot_paths_merged
+          | select('search', '(' ~ (aide_content_snapshot_forbidden | join(')|(')) ~ ')') | list)
+         if aide_content_snapshot_forbidden | length > 0 else []))
+     | unique }}
 __aide_fim_supported_backends:
   - git
 __aide_fim_stage_dir: "{{ __aide_fim_workdir.path }}/store"

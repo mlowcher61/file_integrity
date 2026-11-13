@@ -158,21 +158,44 @@ recovering a corrupt baseline, are in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 ### Reading a Check report
 
 For every host, **AIDE - Check** prints which files were added, removed or
-changed and, for each changed file, **what** changed (old value -> new value):
+changed and, under each path, everything that helps you decide whether the
+change is legitimate:
 
 ```
 Host:     node1
 Result:   CHANGES DETECTED - differences from the baseline
-Counts:   added 1, removed 0, changed 2 (entries scanned: 54990)
+Counts:   added 1, removed 0, changed 3 (entries scanned: 54990)
 Baseline: 2026-11-12T22:23:56Z sha256 7c354f25...
+Packages: matches-package 1, config-modified 1, not-owned 1 (rpm -V on the host; see docs/OPERATIONS.md)
   added    /etc/cron.d/backup-new
-  changed  /etc/ssh/sshd_config
-             Perm   : -rw------- -> -rw-r--r--
+             Package : none - not owned by any package
+  changed  /usr/bin/rhui-set-release
+             Package : rh-amazon-rhui-client-4.0.35-1.el9.noarch (installed 2026-11-13T03:40:03Z, after the baseline) - file matches the package
              SHA512 : 4f9c1aQpisR8jUuf... -> b72e0dvqkrSrGOoy...
-  changed  /root/.ssh
-             Uid     : 0 -> 1000
-             SELinux : unconfined_u:object_r:ssh_home_t:s0 -> unconfined_u:object_r:user_home_t:s0
+  changed  /etc/ssh/sshd_config
+             Package : openssh-server-8.7p1-38.el9.x86_64 (installed 2026-10-21T21:14:02Z) - config file modified locally (differs from the package default) [rpm -V: S.5....T.]
+             SHA512 : 9a1c03d4be77f0aa... -> 77e01bc2d9f3a6c1...
+             Diff (baseline snapshot -> current):
+               --- baseline:/etc/ssh/sshd_config
+               +++ current:/etc/ssh/sshd_config
+               @@ -40,3 +40,3 @@
+                #LoginGraceTime 2m
+               -PermitRootLogin no
+               +PermitRootLogin yes
 ```
+
+What each indented line tells you:
+
+| Line | Meaning |
+|---|---|
+| `Package :` | Which RPM owns the file, when it was installed (flagged if **after the baseline**), and whether `rpm -V` says the file is exactly what the package shipped. Turn off with `aide_report_package_check: false`. |
+| `SHA512`, `Perm`, `Uid`, `SELinux`, ... | What changed: `attribute : baseline value -> current value`. |
+| `Diff` | For files listed in `aide_content_snapshot_paths`: the actual content change, as a unified diff against the copy saved at the last Deploy/Rebaseline. |
+
+AIDE itself stores only hashes, so it cannot show what changed *inside* a
+file. The package check and the content snapshots fill that gap. See
+[docs/OPERATIONS.md](docs/OPERATIONS.md#reading-the-report) for every verdict
+and [content snapshots](#content-snapshots-diffs-for-changed-files) below.
 
 - `SHA512` means the file **contents** changed. Hashes are shortened in the
   job output (`aide_report_hash_chars`, default 16); the full values are in
@@ -185,6 +208,9 @@ Baseline: 2026-11-12T22:23:56Z sha256 7c354f25...
 - The job output is stored in AAP, off the host, so it is a trustworthy
   record even if the host is compromised. AIDE also writes its full report on
   the host to `/var/log/aide/aide.log`.
+- The package verdict comes from the RPM database **on the host**. It is a
+  fast way to clear routine package updates, not proof: an attacker with root
+  can tamper with the RPM database too.
 
 How to triage each pattern is in
 [docs/OPERATIONS.md §3](docs/OPERATIONS.md#3-triaging-a-failed-check).
@@ -203,7 +229,12 @@ that path.
 | `/var/log` | `LOG` |
 
 Excluded by default: `/etc/mtab`, editor backups (`/etc/.*~`),
-`/var/log/journal`, and AIDE's own `/var/lib/aide` and `/var/log/aide`.
+`/var/log/journal`, AIDE's own `/var/lib/aide` and `/var/log/aide`, and
+routine RHEL housekeeping that rewrites files every day: Red Hat Insights
+status files (`/etc/insights-client/.last*`), subscription certificates
+(`/etc/pki/entitlement`), and rotated logs (`/var/log/*-YYYYMMDD[.gz]`,
+`/var/log/*.N[.gz]`). See [docs/WATCHLIST.md](docs/WATCHLIST.md#exclusions)
+for the reasons and trade-offs.
 
 ### Rule groups
 
@@ -269,6 +300,35 @@ sudo cat /etc/aide.conf      # the rendered watch list and rule groups
 sudo aide --list | less      # every entry in the local AIDE database
 ```
 
+### Content snapshots (diffs for changed files)
+
+For a short list of small, important text files, Deploy and Rebaseline save
+a copy in the baseline repository (`baselines/<host>/snapshots/<path>`, with
+each copy's sha256 recorded in `metadata.yml`). When Check finds one of them
+changed, the report shows a unified diff against that copy.
+
+Defaults (`aide_content_snapshot_paths`): `/etc/ssh/sshd_config`,
+`/etc/sudoers`, `/etc/passwd`, `/etc/group`, `/etc/hosts`, `/etc/crontab`,
+`/etc/fstab`, `/etc/selinux/config`. Add more per group or host with
+`aide_content_snapshot_paths_extra`:
+
+```yaml
+aide_content_snapshot_paths_extra:
+  - /etc/nginx/nginx.conf
+  - /etc/sudoers.d/admins
+```
+
+- **Never list secrets.** The copies are stored in Git and diffs appear in job
+  output. Pre-flight rejects paths matching `aide_content_snapshot_forbidden`
+  (`/etc/shadow`, private keys, keytabs, `/etc/pki/...` and similar).
+- Exact file paths only (no wildcards). Files larger than
+  `aide_content_snapshot_max_bytes` (64 KiB) are skipped; diffs are capped at
+  `aide_content_diff_max_lines` (100).
+- A snapshot whose sha256 does not match `metadata.yml` is never diffed; the
+  report says it is not trusted.
+- Snapshots are taken at **Deploy** (new baselines) and **Rebaseline**. Hosts
+  whose baseline predates this feature get snapshots at their next rebaseline.
+
 ## Variable reference
 
 All defaults live in
@@ -286,12 +346,18 @@ in job template extra vars, or in `inventory/group_vars/` for local runs.
 | `aide_rule_groups` | `CONTENTEX`, `PERMS`, `LOG` | Named attribute sets. Names must be alphanumeric. See [Rule groups](#rule-groups). |
 | `aide_watch_paths` | `/boot`, `/etc`, `/usr/bin`, `/usr/sbin`, `/usr/lib`, `/usr/lib64`, `/root/.ssh`, `/var/log` | Baseline watch list (`{path, rule}`). |
 | `aide_watch_paths_extra` | `[]` | Group- or host-level additions, merged in and de-duplicated by path (later wins). |
-| `aide_exclude_paths` | `/etc/mtab`, `/etc/.*~`, `/var/log/journal`, `/var/lib/aide`, `/var/log/aide` | Paths AIDE ignores. |
+| `aide_exclude_paths` | `/etc/mtab`, `/etc/.*~`, `/var/log/journal`, `/var/lib/aide`, `/var/log/aide`, `/etc/insights-client/\.last`, `/etc/pki/entitlement`, rotated logs | Paths AIDE ignores. |
 | `aide_exclude_paths_extra` | `[]` | Group- or host-level additional exclusions. |
 | `aide_forbidden_hashes` | md5, sha1, rmd160, tiger, crc32, crc32b, haval, gost, whirlpool | Hashes that pre-flight rejects. |
 | `aide_fail_on_change` | `true` | Fail hosts with any added, removed or changed entry, after all hosts are reported. |
 | `aide_report_max_paths` | `200` | Maximum paths listed per host in output and `set_stats`. |
 | `aide_report_hash_chars` | `16` | Characters of each old/new hash shown under a changed path in the job output (`0` = full value). `set_stats` always has the full values. |
+| `aide_report_package_check` | `true` | Look up the owning RPM of each added/changed path and run `rpm -V` on it (triage aid). |
+| `aide_content_snapshot_paths` | sshd_config, sudoers, passwd, group, hosts, crontab, fstab, selinux/config | Files copied into the baseline repo at Deploy/Rebaseline and diffed by Check. Never secrets. |
+| `aide_content_snapshot_paths_extra` | `[]` | Group- or host-level additions. |
+| `aide_content_snapshot_max_bytes` | `65536` | Larger files are not snapshotted or diffed. |
+| `aide_content_diff_max_lines` | `100` | Maximum diff lines shown per file. |
+| `aide_content_snapshot_forbidden` | shadow, private keys, keytabs, `/etc/pki/` ... | Regular expressions that pre-flight rejects in the snapshot lists. |
 | `aide_command_timeout` | `3600` | Seconds an `aide` run may take. |
 | `aide_force_init` | `false` | Deploy: replace existing baselines. |
 | `aide_change_ref` | `""` | Rebaseline: required change reference (e.g. `CHG0012345`). |
@@ -308,7 +374,7 @@ Results published with `set_stats` (available to workflow nodes and EDA):
 
 | Key | Published by | Contents |
 |---|---|---|
-| `aide_check_results` | Check | `{host: {status, added, removed, changed, added_paths, removed_paths, changed_paths, changed_details, paths_total, paths_truncated, baseline_sha256, config_drift_corrected, ...}}`. `changed_details` is `{path: [{attribute, old, new}]}` for each listed changed path, with full hash values. |
+| `aide_check_results` | Check | `{host: {status, added, removed, changed, added_paths, removed_paths, changed_paths, changed_details, paths_total, paths_truncated, baseline_sha256, config_drift_corrected, ...}}`. `changed_details` is `{path: [{attribute, old, new}]}` for each listed changed path, with full hash values. `package_checks` is `{path: {verdict, packages: [{package, installed, after_baseline}], rpm_verify_flags, config_file}}`. `content_diffs` is `{path: [diff lines]}`. |
 | `aide_hosts_with_changes` | Check, Rebaseline | List of hosts with differences. |
 | `aide_rebaseline_results` | Rebaseline | Same shape as `aide_check_results`; the changes that were accepted. |
 | `aide_config_validation` | Validate | `{host: {valid, deploy_would_change_config, aide_version}}` |
@@ -323,13 +389,13 @@ file_integrity/
 ├── inventory/                    ← example inventory + group_vars for local runs
 ├── playbooks/
 │   ├── aide_deploy.yml  aide_check.yml  aide_rebaseline.yml  aide_config_validate.yml
-│   ├── roles/file_integrity_defaults/   ← all default variables (no tasks)
-│   ├── tasks/                    ← preflight, baseline_pull/push/restore, report
+│   ├── roles/file_integrity_defaults/   ← all default variables + report filter plugins (no tasks)
+│   ├── tasks/                    ← preflight, baseline_pull/push/restore, report, report_enrich
 │   │   └── backends/git/         ← git implementation of the baseline store
 │   └── templates/aide.conf.j2
 ├── aap/                          ← AAP configuration as code (infra.aap_configuration)
 ├── docs/                         ← DESIGN, OPERATIONS, WATCHLIST
-├── tests/                        ← render test, report parser test, AIDE output fixtures
+├── tests/                        ← render, report parser and filter tests, AIDE output fixtures
 └── .github/workflows/lint.yml
 ```
 
@@ -345,6 +411,7 @@ ansible-lint --profile production
 for p in playbooks/*.yml tests/test_*.yml; do ansible-playbook --syntax-check "$p"; done
 ansible-playbook tests/test_render.yml     # renders aide.conf.j2, checks duplicates, rules, hashes
 ansible-playbook tests/test_report.yml     # parses real AIDE 0.16 / 0.19 output fixtures
+ansible-playbook tests/test_filters.yml    # package verdicts, content diffs, snapshot path validation
 ```
 
 `pre-commit install` enables the same linters, plus gitleaks secret scanning,

@@ -153,6 +153,15 @@ Defaults and why:
 | `/var/log/journal` | Binary systemd journal; rotated and rewritten continuously. |
 | `/var/lib/aide` | AIDE's own databases; they change on every init or update. |
 | `/var/log/aide` | AIDE's own reports; written on every check. |
+| `/etc/insights-client/\.last` | Red Hat Insights status files (`.lastupload`, `.last-upload.results`), rewritten by every daily upload. `insights-client.conf` and the rest of the directory stay monitored. |
+| `/etc/pki/entitlement` | Subscription certificates, renewed regularly by `rhsmcertd`. Trade-off: changes to the entitlement key are not detected either. Remove this exclusion (override `aide_exclude_paths`) if you need that. |
+| `/var/log/.*-[0-9]{8}(\.gz)?$` | Rotated logs with a date suffix (logrotate `dateext`, the RHEL default), for example `messages-20261113.gz`. They appear and disappear on every rotation. Live logs stay monitored (`LOG` rule). |
+| `/var/log/.*\.[0-9]+(\.gz)?$` | Rotated logs with a number suffix, for example `audit.log.1` (auditd) or `secure.2.gz`. |
+
+The last four were added in v0.5.0 after the first daily check on RHEL 9 hosts
+on AWS flagged them on every host. They were validated with
+`aide --config-check` and `aide -p` (path check) on AIDE 0.19.2. Note that
+they are AIDE regular expressions matched against the full path.
 
 Other common exclusions to consider (add them to `aide_exclude_paths_extra`
 on the hosts where they apply):
@@ -169,3 +178,56 @@ on the hosts where they apply):
 
 Exclude as little as possible. Every exclusion is a place an attacker can
 hide. Prefer a looser rule (for example `PERMS`) over excluding a path entirely.
+
+**Package-managed files that update themselves.** On RHEL in AWS, the
+`rh-amazon-rhui-client` package updates itself from a daily cron job, which
+changes about 20 files under `/etc/pki/rhui`, `/etc/yum.repos.d` and
+`/usr/bin`. These are deliberately **not** excluded: binaries and repository
+definitions are exactly what you want to watch. The report's package check
+shows them as *matches the package, installed after the baseline*; rebaseline
+when it happens.
+
+## Content snapshots
+
+AIDE stores hashes, not file contents, so on its own it can say *that* a file
+changed but not *how*. For a short list of small text files, this project
+keeps a copy in the baseline repository so Check can show a diff.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `aide_content_snapshot_paths` | `/etc/ssh/sshd_config`, `/etc/sudoers`, `/etc/passwd`, `/etc/group`, `/etc/hosts`, `/etc/crontab`, `/etc/fstab`, `/etc/selinux/config` | Files snapshotted for every host. |
+| `aide_content_snapshot_paths_extra` | `[]` | Group- or host-level additions (merged). |
+| `aide_content_snapshot_max_bytes` | `65536` | Larger files are skipped (reported at Deploy/Rebaseline). |
+| `aide_content_diff_max_lines` | `100` | Diff lines shown per file. |
+| `aide_content_snapshot_forbidden` | see defaults | Regular expressions pre-flight rejects. |
+
+How it works:
+
+1. **Deploy** (for new baselines) and **Rebaseline** read each listed file on
+   the host and store it as `baselines/<host>/snapshots/<path>` in the
+   baseline repository, with its sha256 under `snapshots:` in `metadata.yml`.
+   Missing files and files over the size limit are skipped and listed in the
+   job output.
+2. **Check**, for each *changed* path that has a snapshot, verifies the stored
+   copy against `metadata.yml`, reads the current file, and prints a unified
+   diff under the path. If the stored copy does not match its recorded sha256,
+   no diff is shown and the report says the snapshot is not trusted.
+
+Rules:
+
+- **Never snapshot secrets.** Copies live in Git and diffs appear in AAP job
+  output (visible to anyone who can read the job). Pre-flight rejects
+  `/etc/shadow`, `/etc/gshadow`, `/etc/security/opasswd`, anything ending in
+  `_key`, `.key` or `key.pem`, SSH private keys (`~/.ssh/id_*` without
+  `.pub`), keytabs, `.p12`/`.pfx`/`.jks`, and everything under `/etc/pki/`.
+  Add your own patterns to `aide_content_snapshot_forbidden`.
+- Exact absolute file paths only; no wildcards or directories.
+- The defaults contain account and sudo information (`/etc/passwd`,
+  `/etc/group`, `/etc/sudoers`). They hold no password hashes, but if your
+  policy does not allow them in the baseline repository, override
+  `aide_content_snapshot_paths`.
+- The snapshot list is independent of the watch list, but a diff only
+  appears when AIDE reports the file as changed, so the file must also be
+  watched with a content rule (for example under `/etc`, `CONTENTEX`).
+- After changing the list, the new snapshots are taken at the next
+  Rebaseline.

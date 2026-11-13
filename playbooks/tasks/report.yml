@@ -7,7 +7,9 @@
 #   aide_report_stats_key  - set_stats key (default: aide_check_results)
 # Output (per host):
 #   aide_report - dict with status, counts, the (truncated) path lists and,
-#                 for each listed changed path, what changed (changed_details)
+#                 for each listed changed path, what changed (changed_details).
+#                 For hosts with changes, report_enrich.yml adds
+#                 package_checks (rpm ownership / rpm -V) and content_diffs.
 #
 # AIDE exit codes: 0 = no differences; 1/2/4 (bitwise OR) = added/removed/
 # changed entries; 14 and above = error.
@@ -68,6 +70,10 @@
     __details: "{{ __out | aide_change_details }}"
     __paths_total: "{{ __added_paths | length + __removed_paths | length + __changed_paths | length }}"
 
+- name: Report | Add package verification and content diffs
+  ansible.builtin.include_tasks: report_enrich.yml
+  when: aide_report.status == 'changes'
+
 - name: Report | Publish results for workflows and Event-Driven Ansible
   ansible.builtin.set_stats:
     data: "{{ {aide_report_stats_key | default('aide_check_results'): {inventory_hostname: aide_report}} }}"
@@ -96,7 +102,7 @@
           'Baseline: ' ~ (aide_report.baseline_timestamp or 'n/a') ~ ' sha256 ' ~ (aide_report.baseline_sha256 or 'n/a')]
          + (['Config:   /etc/aide.conf had drifted from the managed template and was corrected'] if aide_report.config_drift_corrected else [])
          + (['Error:    ' ~ aide_report.error] if aide_report.error else [])
-         + (aide_report.added_paths | map('regex_replace', '^', '  added    ') | list)
-         + (aide_report.removed_paths | map('regex_replace', '^', '  removed  ') | list)
-         + (aide_report.changed_paths | aide_change_lines(aide_report.changed_details, hash_width=aide_report_hash_chars | int))
+         + (['Packages: ' ~ (aide_report.package_checks | aide_package_summary)
+             ~ ' (rpm -V on the host; see docs/OPERATIONS.md)'] if aide_report.package_checks | default({}) | length > 0 else [])
+         + (aide_report | aide_report_lines(hash_width=aide_report_hash_chars | int))
          + (['  ... list truncated: showing ' ~ aide_report_max_paths ~ ' of ' ~ aide_report.paths_total ~ ' paths'] if aide_report.paths_truncated else []) }}

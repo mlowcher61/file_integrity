@@ -202,6 +202,23 @@ removed, changed; `14` and above = error. The check playbook:
    because AIDE wraps long values (hashes, SELinux contexts) across lines and
    prints multi-line ACLs, which a regular expression in Jinja cannot handle
    reliably. Every playbook uses that role, so the plugin always loads.
+   For hosts with changes, `tasks/report_enrich.yml` then adds:
+   - **Package verdicts.** One `sh` process on the host runs `rpm -qf` for
+     each listed added/changed path (paths passed as arguments, never
+     interpolated), reads the file's `FILEVERIFYFLAGS`/`FILEFLAGS` from the
+     RPM header, and runs `rpm -V` once per owning package. The verify flags
+     matter: packages such as `setup` mark `/etc/passwd` and `/etc/hosts`
+     `%verify(not md5 size mtime)`, so `rpm -V` is silent about content
+     changes to them; those paths get the verdict `unverified` instead of a
+     false "matches the package". The RPM database is on the monitored host,
+     so verdicts are a triage aid, not part of the trust model.
+   - **Content diffs.** For changed paths in `aide_content_snapshot_paths`,
+     the stored copy (`baselines/<host>/snapshots/<path>`, written by
+     `tasks/baseline_push.yml` at Deploy/Rebaseline) is checked against the
+     sha256 in `metadata.yml` and diffed with the current file (`difflib`,
+     in the `aide_content_diffs` filter). The copy comes from the same
+     off-host, version-controlled store as the AIDE database, so it shares
+     its trust properties. Secrets are kept out by a pre-flight deny list.
 3. Prints a run-once summary of all hosts, including hosts that failed earlier.
 4. Fails hosts with `status: error` (always), then hosts with
    `status: changes` when `aide_fail_on_change` is true.

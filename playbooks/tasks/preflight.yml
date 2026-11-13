@@ -76,3 +76,19 @@
     __forbidden: >-
       {{ aide_rule_groups.values() | map('split', '+') | flatten
          | map('trim') | intersect(aide_forbidden_hashes) }}
+
+- name: Pre-flight | Validate the content snapshot paths
+  ansible.builtin.assert:
+    that:
+      - aide_content_snapshot_paths is sequence
+      - aide_content_snapshot_paths_extra is sequence
+      - aide_content_snapshot_max_bytes | int > 0
+      - aide_content_diff_max_lines | int > 0
+      - __aide_fim_snapshot_rejected | length == 0
+    fail_msg: >-
+      aide_content_snapshot_paths(_extra) must be absolute file paths without
+      wildcards, and must never include secrets (the copies are stored in Git
+      and diffs are shown in job output). Rejected:
+      {{ __aide_fim_snapshot_rejected | join(', ') }}. Forbidden patterns
+      (aide_content_snapshot_forbidden): {{ aide_content_snapshot_forbidden | join(', ') }}.
+    quiet: true

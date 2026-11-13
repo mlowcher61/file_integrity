@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-13
+
+### Added
+
+- **Package verification in Check and Rebaseline reports.** For each listed
+  added or changed path, a `Package :` line shows the owning RPM, its install
+  time (flagged when installed after the baseline) and a verdict from
+  `rpm -V`: matches the package, config file modified, DIFFERS FROM THE
+  PACKAGE, contents not verified by rpm (`%verify` exclusions such as
+  `/etc/passwd`), missing, or not owned. A `Packages:` summary line counts
+  the verdicts. `aide_report_package_check` (default `true`). Published as
+  `package_checks` in `set_stats`.
+- **Content snapshots and diffs.** Deploy and Rebaseline store copies of
+  `aide_content_snapshot_paths` (+ `_extra`) in the baseline repository
+  (`baselines/<host>/snapshots/`, sha256 in `metadata.yml`). Check prints a
+  unified diff for each changed snapshotted file, after verifying the stored
+  copy. Published as `content_diffs`. New variables:
+  `aide_content_snapshot_paths`, `aide_content_snapshot_paths_extra`,
+  `aide_content_snapshot_max_bytes`, `aide_content_diff_max_lines`,
+  `aide_content_snapshot_forbidden`. Pre-flight rejects secrets, wildcards
+  and relative paths.
+- Default exclusions for routine RHEL housekeeping that otherwise flags on
+  every daily check: `/etc/insights-client/\.last`, `/etc/pki/entitlement`,
+  and rotated logs (`/var/log/.*-[0-9]{8}(\.gz)?$`,
+  `/var/log/.*\.[0-9]+(\.gz)?$`). Validated with AIDE 0.19.2.
+- `tests/test_filters.yml` (in CI): package verdicts from real RHEL rpm
+  output, content diffs (including tampered and binary snapshots), report
+  lines, and snapshot path validation.
+- Docs: README "Content snapshots", verdict table and worked triage example
+  (job 1163) in docs/OPERATIONS.md, exclusion reasons and "Content
+  snapshots" in docs/WATCHLIST.md, design notes in docs/DESIGN.md.
+
+### Changed
+
+- The report formatter is now one filter, `aide_report_lines`, replacing
+  `aide_change_lines`.
+- Watch list change: the new default exclusions change `/etc/aide.conf`, so
+  run **AIDE - Change Rebaseline** after upgrading.
+
 ## [0.4.0] - 2026-11-13
 
 ### Added
@@ -110,6 +149,7 @@ All notable changes to this project are documented here. The format follows
   test and report parser test on ansible-core 2.16 and latest.
 - Documentation: README, DESIGN, OPERATIONS, WATCHLIST, aap/README.
 
+[0.5.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.5.0
 [0.4.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.4.0
 [0.3.1]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.3.1
 [0.3.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.3.0
