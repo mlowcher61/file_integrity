@@ -193,7 +193,15 @@ Reading `tasks/main.yml` showed behaviour that drove these decisions:
 removed, changed; `14` and above = error. The check playbook:
 
 1. Runs `aide --check` with `failed_when: false` (async, up to `aide_command_timeout`).
-2. Parses and reports every host (`tasks/report.yml`).
+2. Parses and reports every host (`tasks/report.yml`): counts, the added,
+   removed and changed paths, and for each changed path the attribute changes
+   from AIDE's "Detailed information about changes" section
+   (`report_level=changed_attributes`). That section is parsed by a small
+   filter plugin, `aide_change_details`, in
+   `playbooks/roles/file_integrity_defaults/filter_plugins/aide_report.py`,
+   because AIDE wraps long values (hashes, SELinux contexts) across lines and
+   prints multi-line ACLs, which a regular expression in Jinja cannot handle
+   reliably. Every playbook uses that role, so the plugin always loads.
 3. Prints a run-once summary of all hosts, including hosts that failed earlier.
 4. Fails hosts with `status: error` (always), then hosts with
    `status: changes` when `aide_fail_on_change` is true.

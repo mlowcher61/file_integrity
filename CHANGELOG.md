@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-13
+
+### Added
+
+- Check and Rebaseline reports now show **what changed** on every changed
+  path, not only the path: one `attribute : old -> new` line per changed
+  attribute (for example `Perm`, `Uid`, `SELinux`, `ACL`, `SHA512`), parsed
+  from AIDE's "Detailed information about changes" section.
+- `changed_details` (`{path: [{attribute, old, new}]}`, full hash values) in
+  `aide_check_results` / `aide_rebaseline_results` (`set_stats`).
+- `aide_report_hash_chars` (default `16`): how much of each hash is printed
+  in the job output (`0` = full value).
+- Filter plugins `aide_change_details` and `aide_change_lines`
+  (`playbooks/roles/file_integrity_defaults/filter_plugins/aide_report.py`).
+- Report parser test: change-detail assertions for AIDE 0.16 and 0.19, and a
+  new fixture covering `Perm`, `Uid`, multi-line `ACL` and wrapped `SELinux`
+  values.
+- README "Reading a Check report" and docs/OPERATIONS.md "Reading the report"
+  sections; new triage patterns (setuid added, SELinux context change).
+
+### Fixed
+
+- Baseline repository clone and push failed in AAP: the token was inserted
+  into the HTTPS URL with a `regex_replace` backreference inside a folded YAML
+  scalar, which rendered as a literal `\1` and dropped the `https://` scheme.
+  The URL is now built with a plain string replace, and `/` in tokens is
+  percent-encoded.
+- A failed baseline clone now shows git's error message (token masked)
+  instead of only a generic hint.
+
 ## [0.3.1] - 2026-11-12
 
 ### Fixed
@@ -80,6 +110,7 @@ All notable changes to this project are documented here. The format follows
   test and report parser test on ansible-core 2.16 and latest.
 - Documentation: README, DESIGN, OPERATIONS, WATCHLIST, aap/README.
 
+[0.4.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.4.0
 [0.3.1]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.3.1
 [0.3.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mlowcher61/file_integrity/releases/tag/v0.2.0

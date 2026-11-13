@@ -24,3 +24,30 @@
       - (case.expect.status != 'error') or (aide_report.error | length > 0)
     fail_msg: "Unexpected report for {{ case.fixture }}: {{ aide_report }}"
     quiet: true
+
+- name: "Case | Check which attributes changed per path for {{ case.fixture }}"
+  ansible.builtin.assert:
+    that:
+      - aide_report.changed_details | dict2items | map(attribute='key') | sort | list
+        == case.expect_details | dict2items | map(attribute='key') | sort | list
+      - case.expect_details | dict2items | map(attribute='key') | map('extract', aide_report.changed_details)
+        | map('map', attribute='attribute') | map('list') | list
+        == case.expect_details | dict2items | map(attribute='value') | list
+    fail_msg: "Unexpected change details for {{ case.fixture }}: {{ aide_report.changed_details }}"
+    quiet: true
+  when: case.expect_details is defined
+
+- name: "Case | Check old and new values for {{ case.fixture }}"
+  ansible.builtin.assert:
+    that:
+      - __change.old == item.old
+      - __change.new == item.new
+    fail_msg: "{{ item.path }} {{ item.attribute }}: expected {{ item.old }} -> {{ item.new }}, got {{ __change }}"
+    quiet: true
+  vars:
+    __change: >-
+      {{ aide_report.changed_details[item.path] | default([])
+         | selectattr('attribute', 'equalto', item.attribute) | first | default({}) }}
+  loop: "{{ case.expect_values | default([]) }}"
+  loop_control:
+    label: "{{ item.path }} {{ item.attribute }}"

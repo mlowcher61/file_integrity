@@ -3,7 +3,10 @@
 #   ansible-playbook tests/test_report.yml
 #
 # Feeds captured `aide --check` output (tests/fixtures/*.txt) through
-# playbooks/tasks/report.yml and asserts on the parsed counts and paths.
+# playbooks/tasks/report.yml and asserts on the parsed counts, paths and
+# per-path change details (attribute, old value, new value).
+# aide_0.19_attributes.txt is hand-built in the AIDE 0.19 layout to cover
+# non-hash attributes (Perm, Uid, multi-line ACL, wrapped SELinux context).
 
 - name: Test | Parse captured AIDE output with report.yml
   hosts: localhost
@@ -17,11 +20,13 @@
         rc: 4
         expect: { status: changes, added: 0, removed: 0, changed: 1, total: 495 }
         expect_paths: { added: [], removed: [], changed: [/etc/aide.conf] }
+        expect_details: { /etc/aide.conf: [SHA512] }
         max_paths: 200
       - fixture: aide_0.19_changed.txt
         rc: 4
         expect: { status: changes, added: 0, removed: 0, changed: 1, total: 1156 }
         expect_paths: { added: [], removed: [], changed: [/etc/aide.conf] }
+        expect_details: { /etc/aide.conf: [SHA512] }
         max_paths: 200
       - fixture: aide_0.16_mixed.txt
         rc: 7
@@ -30,6 +35,12 @@
           added: [/etc/cron.d/fi-test-backdoor, /root/.ssh/authorized_keys]
           removed: [/etc/motd]
           changed: [/etc/hosts, /usr/sbin/fi-test-binary]
+        expect_details: { /etc/hosts: [SHA512], /usr/sbin/fi-test-binary: [SHA512] }
+        expect_values:
+          - path: /usr/sbin/fi-test-binary
+            attribute: SHA512
+            old: YIY15TBP9sed8sbJ0ua7qY5I/rOyjaC+UdUN/2VkcyiJsjiUw/HtbEnjoRhfpXAQoIiSnjfYRKC5tdpZlMK7NQ==
+            new: VDZIJNdi/vCxtlcqY1o7vwqfpJGIfzDHAFLQYLon40UBBkw8GI0hNJjwTDqnX5YRojFYG/bParfpUjFbdTJlJw==
         max_paths: 200
       - fixture: aide_0.19_mixed.txt
         rc: 7
@@ -38,6 +49,7 @@
           added: [/etc/cron.d/fi-test-backdoor, /root/.ssh/authorized_keys]
           removed: [/etc/motd]
           changed: [/etc/hosts, /usr/sbin/fi-test-binary]
+        expect_details: { /etc/hosts: [SHA512], /usr/sbin/fi-test-binary: [SHA512] }
         max_paths: 200
       - fixture: aide_0.19_mixed.txt
         rc: 7
@@ -46,11 +58,37 @@
           added: [/etc/cron.d/fi-test-backdoor, /root/.ssh/authorized_keys]
           removed: [/etc/motd]
           changed: []
+        expect_details: {}
         max_paths: 3
+      - fixture: aide_0.19_attributes.txt
+        rc: 4
+        expect: { status: changes, added: 0, removed: 0, changed: 3, total: 1160 }
+        expect_paths:
+          added: []
+          removed: []
+          changed: [/etc/ssh/sshd_config, /root/.ssh, /usr/bin/fi-test-tool]
+        expect_details:
+          /etc/ssh/sshd_config: [Perm, SHA512]
+          /root/.ssh: [Uid, ACL, SELinux]
+          /usr/bin/fi-test-tool: [Perm, SHA512]
+        expect_values:
+          - { path: /etc/ssh/sshd_config, attribute: Perm, old: "-rw-------", new: "-rw-r--r--" }
+          - { path: /root/.ssh, attribute: Uid, old: "0", new: "1000" }
+          - path: /root/.ssh
+            attribute: ACL
+            old: "A: user::rwx, A: group::---, A: other::---"
+            new: "A: user::rwx, A: group::---, A: user:1000:rwx, A: other::---"
+          - path: /root/.ssh
+            attribute: SELinux
+            old: unconfined_u:object_r:ssh_home_t:s0
+            new: unconfined_u:object_r:user_home_t:s0
+          - { path: /usr/bin/fi-test-tool, attribute: Perm, old: "-rwxr-xr-x", new: "-rwsr-xr-x" }
+        max_paths: 200
       - fixture: aide_clean.txt
         rc: 0
         expect: { status: clean, added: 0, removed: 0, changed: 0, total: 1158 }
         expect_paths: { added: [], removed: [], changed: [] }
+        expect_details: {}
         max_paths: 200
       - fixture: aide_error.txt
         rc: 17

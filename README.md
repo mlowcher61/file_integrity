@@ -155,6 +155,40 @@ from the AAP scheduler. No cron jobs are used on the hosts.
 Runbooks for every scenario, including triaging an alert, adding hosts and
 recovering a corrupt baseline, are in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
+### Reading a Check report
+
+For every host, **AIDE - Check** prints which files were added, removed or
+changed and, for each changed file, **what** changed (old value -> new value):
+
+```
+Host:     node1
+Result:   CHANGES DETECTED - differences from the baseline
+Counts:   added 1, removed 0, changed 2 (entries scanned: 54990)
+Baseline: 2026-11-12T22:23:56Z sha256 7c354f25...
+  added    /etc/cron.d/backup-new
+  changed  /etc/ssh/sshd_config
+             Perm   : -rw------- -> -rw-r--r--
+             SHA512 : 4f9c1aQpisR8jUuf... -> b72e0dvqkrSrGOoy...
+  changed  /root/.ssh
+             Uid     : 0 -> 1000
+             SELinux : unconfined_u:object_r:ssh_home_t:s0 -> unconfined_u:object_r:user_home_t:s0
+```
+
+- `SHA512` means the file **contents** changed. Hashes are shortened in the
+  job output (`aide_report_hash_chars`, default 16); the full values are in
+  `set_stats` (`aide_check_results.<host>.changed_details`).
+- `Perm`, `Uid`, `Gid`, `ACL`, `SELinux`, `XAttrs`, `Linkcount`, `File type`
+  show metadata changes. Which attributes can appear depends on the path's
+  [rule group](#rule-groups).
+- Added and removed files have no old/new values: the whole file appeared or
+  disappeared.
+- The job output is stored in AAP, off the host, so it is a trustworthy
+  record even if the host is compromised. AIDE also writes its full report on
+  the host to `/var/log/aide/aide.log`.
+
+How to triage each pattern is in
+[docs/OPERATIONS.md §3](docs/OPERATIONS.md#3-triaging-a-failed-check).
+
 ## What is monitored
 
 AIDE watches a list of paths (the **watch list**). Each path is paired with a
@@ -257,6 +291,7 @@ in job template extra vars, or in `inventory/group_vars/` for local runs.
 | `aide_forbidden_hashes` | md5, sha1, rmd160, tiger, crc32, crc32b, haval, gost, whirlpool | Hashes that pre-flight rejects. |
 | `aide_fail_on_change` | `true` | Fail hosts with any added, removed or changed entry, after all hosts are reported. |
 | `aide_report_max_paths` | `200` | Maximum paths listed per host in output and `set_stats`. |
+| `aide_report_hash_chars` | `16` | Characters of each old/new hash shown under a changed path in the job output (`0` = full value). `set_stats` always has the full values. |
 | `aide_command_timeout` | `3600` | Seconds an `aide` run may take. |
 | `aide_force_init` | `false` | Deploy: replace existing baselines. |
 | `aide_change_ref` | `""` | Rebaseline: required change reference (e.g. `CHG0012345`). |
@@ -273,7 +308,7 @@ Results published with `set_stats` (available to workflow nodes and EDA):
 
 | Key | Published by | Contents |
 |---|---|---|
-| `aide_check_results` | Check | `{host: {status, added, removed, changed, added_paths, removed_paths, changed_paths, paths_total, paths_truncated, baseline_sha256, config_drift_corrected, ...}}` |
+| `aide_check_results` | Check | `{host: {status, added, removed, changed, added_paths, removed_paths, changed_paths, changed_details, paths_total, paths_truncated, baseline_sha256, config_drift_corrected, ...}}`. `changed_details` is `{path: [{attribute, old, new}]}` for each listed changed path, with full hash values. |
 | `aide_hosts_with_changes` | Check, Rebaseline | List of hosts with differences. |
 | `aide_rebaseline_results` | Rebaseline | Same shape as `aide_check_results`; the changes that were accepted. |
 | `aide_config_validation` | Validate | `{host: {valid, deploy_would_change_config, aide_version}}` |

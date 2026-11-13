@@ -20,3 +20,6 @@ venv/
 *.db.gz
 *.db.new.gz
 aap/vars/secrets.yml
+
+# Local output from Claude Cowork / Claude Desktop (not project content)
+Claude outputs/

@@ -59,14 +59,60 @@ them onto the host) unless you pass `aide_force_init=true`.
 ```
 Host:     web01.example.com
 Result:   CHANGES DETECTED - differences from the baseline
-Counts:   added 2, removed 1, changed 2 (entries scanned: 45581)
+Counts:   added 2, removed 1, changed 3 (entries scanned: 45581)
 Baseline: 2026-11-11T20:19:53Z sha256 5cbb36d9...
   added    /etc/cron.d/backup-new
   added    /root/.ssh/authorized_keys
   removed  /etc/motd
   changed  /etc/hosts
+             SHA512 : IGtQPh5xQpisR8jU... -> Uo+VC5nvqkrSrGOo...
   changed  /usr/sbin/sshd
+             Perm   : -rwxr-xr-x -> -rwsr-xr-x
+             SHA512 : YIY15TBP9sed8sbJ... -> VDZIJNdi/vCxtlcq...
+  changed  /root/.ssh
+             Uid     : 0 -> 1000
+             ACL     : A: user::rwx, A: group::---, A: other::--- -> A: user::rwx, A: group::---, A: user:1000:rwx, A: other::---
 ```
+
+### Reading the report
+
+| Line | Meaning |
+|---|---|
+| `Result:` | `CLEAN`, `CHANGES DETECTED`, or `ERROR` (AIDE did not finish; the error follows). |
+| `Counts:` | Number of added, removed and changed entries, and how many entries AIDE scanned. |
+| `Baseline:` | When the trusted baseline was created and its sha256. Every difference happened **after** this time. |
+| `Config:` | Only shown when `/etc/aide.conf` had been edited on the host. It was put back. |
+| `added` / `removed` | A file or directory appeared or disappeared since the baseline. |
+| `changed` + indented lines | The file still exists but some attributes differ. Each indented line is `attribute : baseline value -> current value`. |
+
+The attributes you can see:
+
+| Attribute | What changed | Example |
+|---|---|---|
+| `SHA512` (or `SHA256`) | The file **contents** | Edited config file, replaced binary |
+| `Perm` | Permission bits, including setuid/setgid/sticky | `-rwxr-xr-x -> -rwsr-xr-x` (setuid added) |
+| `Uid` / `Gid` | Owner / group (numeric IDs) | `0 -> 1000` |
+| `ACL` | POSIX ACL entries | an extra `A: user:1000:rwx` entry |
+| `SELinux` | SELinux context | `ssh_home_t -> user_home_t` |
+| `XAttrs` | Extended attributes | |
+| `Linkcount` | Number of hard links | a new hard link to a binary |
+| `File type` | Type of the entry | regular file replaced by a symlink |
+
+Which attributes are compared depends on the path's rule group (see
+[WATCHLIST.md](WATCHLIST.md#rule-groups)). For example, `/var/log` uses `LOG`,
+which never reports `SHA512`.
+
+Hash values are shortened in the job output (`aide_report_hash_chars`,
+default 16 characters; set `0` to print them in full). The full old and new
+values are always in the published stats:
+`aide_check_results.<host>.changed_details["<path>"]`, a list of
+`{attribute, old, new}`. A workflow node or EDA rulebook can use them
+directly, for example to add them to a ticket.
+
+At most `aide_report_max_paths` (200) paths are listed per host. Beyond that a
+`... list truncated` line is printed, and the full report is on the host in
+`/var/log/aide/aide.log`. You can also use the counts and `rpm -Va` to triage
+a large patch run.
 
 The job **fails** if any host has changes (`aide_fail_on_change: true`), but
 only after every host has been checked. Add a notification template (email,
@@ -80,7 +126,9 @@ Event-Driven Ansible rulebook can open a ticket automatically.
 
 ## 3. Triaging a failed check
 
-Work through these questions for each reported path.
+Work through these questions for each reported path. The indented
+`attribute : old -> new` lines under each changed path tell you *what* changed,
+which usually answers the first question quickly.
 
 **Step 1: Is it explained by an approved change?**
 
@@ -100,14 +148,19 @@ Work through these questions for each reported path.
 | `/etc/aide.conf` changed | You changed the watch list (expected after a watch list change) **or** someone edited it by hand (`config_drift_corrected: true`) | If expected, rebaseline. If drift, investigate who edited it. |
 | New file in `/etc/cron.d`, `/etc/systemd/system`, `/etc/sudoers.d`, `/root/.ssh` | Persistence mechanisms | **Suspicious.** Escalate (Step 3). |
 | Changed binary in `/usr/bin` or `/usr/sbin` with no package update | Trojaned binary | **Suspicious.** Escalate. |
-| Permission or owner change only (`p`, `u`, `g` flags) | Manual `chmod`/`chown`, or a misbehaving script | Investigate; fix or rebaseline. |
+| Permission or owner change only (`Perm`, `Uid`, `Gid` lines, no `SHA512`) | Manual `chmod`/`chown`, or a misbehaving script | Investigate; fix or rebaseline. |
+| `Perm` gains an `s` (for example `-rwxr-xr-x -> -rwsr-xr-x`) | setuid/setgid bit added | **Suspicious** unless a package update explains it. Escalate. |
+| `SELinux` context changed on a file or directory | Manual `chcon`, files moved instead of copied, or a relabel | Run `restorecon -nv <path>` to see the expected label. Escalate if it weakens confinement. |
+| `SHA512` changed on a binary but `rpm -Vf <path>` reports nothing | The package was legitimately updated | Rebaseline under the patch change ref. |
 | The same benign path flags on every check (e.g. an app writes a state file under `/etc`) | Noisy path | Add an exclusion or a looser rule (see [WATCHLIST.md](WATCHLIST.md)), validate, then rebaseline. |
 
 **Step 3: If it is suspicious**
 
 1. **Do not rebaseline.** The baseline repo is your evidence of the last
    known-good state.
-2. Keep the failed AAP job output and the `aide_check_results` stats.
+2. Keep the failed AAP job output and the `aide_check_results` stats. They
+   include the full old and new hashes (`changed_details`), which you can
+   compare with known-good packages or threat-intelligence hashes.
 3. Follow your incident response process (isolate the host, capture memory
    and disk, etc.).
 4. After the host is rebuilt or cleaned, re-deploy it (§5, or §6 if the

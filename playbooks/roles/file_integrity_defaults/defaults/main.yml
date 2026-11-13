@@ -94,6 +94,10 @@ aide_exclude_paths_merged: "{{ (aide_exclude_paths + aide_exclude_paths_extra) |
 aide_fail_on_change: true
 # Maximum number of changed paths listed per host in job output / set_stats.
 aide_report_max_paths: 200
+# Characters of each old/new hash shown under a changed path in the job output
+# (0 = the full value). The full values are always in set_stats
+# (aide_check_results.<host>.changed_details).
+aide_report_hash_chars: 16
 # Seconds an `aide --init/--check/--update` may run before Ansible gives up.
 aide_command_timeout: 3600
 

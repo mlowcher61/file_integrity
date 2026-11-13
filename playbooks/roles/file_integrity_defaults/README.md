@@ -1,9 +1,14 @@
 # file_integrity_defaults
 
-A **defaults-only** role (no tasks) that lives next to the playbooks
+A role with **no tasks** that lives next to the playbooks
 (`playbooks/roles/`), so Ansible always finds it. Every playbook lists it
-under `roles:` so the variables in `defaults/main.yml` are loaded at the
-lowest possible precedence.
+under `roles:` so that:
+
+- the variables in `defaults/main.yml` are loaded at the lowest possible
+  precedence, and
+- the filter plugins in `filter_plugins/` are available. `aide_report.py`
+  provides `aide_change_details` and `aide_change_lines`, used by
+  `playbooks/tasks/report.yml` to show what changed on each changed path.
 
 Why not `inventory/group_vars/all`? In Ansible Automation Platform the
 inventory is a separate object, so `group_vars/` that live next to an

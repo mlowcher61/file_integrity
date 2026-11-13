@@ -1,0 +1,54 @@
+Start timestamp: 2026-11-13 18:02:11 +0000 (AIDE 0.19.2)
+AIDE found differences between database and filesystem!!
+
+Summary:
+  Total number of entries:	1160
+  Added entries:		0
+  Removed entries:		0
+  Changed entries:		3
+
+---------------------------------------------------
+Changed entries:
+---------------------------------------------------
+
+f   p..    .H...  : /etc/ssh/sshd_config
+d    .u.   ..A.S  : /root/.ssh
+f   p..    .H...  : /usr/bin/fi-test-tool
+
+---------------------------------------------------
+Detailed information about changes:
+---------------------------------------------------
+
+File: /etc/ssh/sshd_config
+ Perm      : -rw-------                       | -rw-r--r--
+ SHA512    : 4f9c1aQpisR8jUufBeWmebQBZd7nxZAA | b72e0dvqkrSrGOoyiCEhFYGZnoXy8isBB
+             NGE31OXynOfGeh1wbmn9s4LKDaiSFmrF | LJpjP1YcHiegDL7XwSGGh06eWNz6Z5pd
+             ndAVjBem3VKnJQyLT9C1kQ==         | xILkavi7mzcurZkaoJcfjw==
+
+Directory: /root/.ssh
+ Uid       : 0                                | 1000
+ ACL       : A: user::rwx                     | A: user::rwx
+             A: group::---                    | A: group::---
+             A: other::---                    | A: user:1000:rwx
+                                              | A: other::---
+ SELinux   : unconfined_u:object_r:ssh_home_t | unconfined_u:object_r:user_home_t
+             :s0                              | :s0
+
+File: /usr/bin/fi-test-tool
+ Perm      : -rwxr-xr-x                       | -rwsr-xr-x
+ SHA512    : YIY15TBP9sed8sbJ0ua7qY5I/rOyjaC+ | VDZIJNdi/vCxtlcqY1o7vwqfpJGIfzDH
+             UdUN/2VkcyiJsjiUw/HtbEnjoRhfpXAQ | AFLQYLon40UBBkw8GI0hNJjwTDqnX5YR
+             oIiSnjfYRKC5tdpZlMK7NQ==         | ojFYG/bParfpUjFbdTJlJw==
+
+
+---------------------------------------------------
+The attributes of the (uncompressed) database(s):
+---------------------------------------------------
+
+/var/lib/aide/aide.db.gz
+ SHA512    : kXxrG237rNbYE3oRmNZc/+VhVxbr/9lB
+             nqmZFKKf1ix6MsXvkGtrLKD4hwaFr4L8
+             8BFoMoGj2p71Giq1OgMoZw==
+
+
+End timestamp: 2026-11-13 18:02:11 +0000 (run time: 0m 0s)
